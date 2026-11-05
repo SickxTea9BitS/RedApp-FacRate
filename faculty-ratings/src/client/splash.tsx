@@ -1172,7 +1172,14 @@ export const App = () => {
         {currentView === 'faculty-detail' && selectedFaculty && (
           <section>
             <button
-              onClick={() => setCurrentView('faculty')}
+              onClick={() => {
+                setCurrentView('faculty');
+                setShowFacultyCourseRequestEditor(false);
+                setFacultyCourseRequestCodes([]);
+                setFacultyCourseRequestSearch('');
+                setFacultyCourseRequestError('');
+                setFacultyCourseRequestMessage('');
+              }}
               style={{
                 ...styles.secondaryButton,
                 padding: '8px 14px',
@@ -1182,7 +1189,29 @@ export const App = () => {
               ← Back to Faculty List
             </button>
 
-            <h1 style={styles.title}>{getFullName(selectedFaculty)}</h1>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', marginBottom: '8px' }}>
+              <h1 style={{ ...styles.title, margin: 0, minWidth: 0, overflowWrap: 'anywhere' }}>{getFullName(selectedFaculty)}</h1>
+              <button
+                type="button"
+                disabled={Boolean(ratingSummary?.eligibility.hasRated)}
+                onClick={() => {
+                  if (ratingSummary?.eligibility.hasRated) return;
+                  setRatingMode('rate');
+                }}
+                style={{
+                  ...styles.secondaryButton,
+                  padding: '8px 16px',
+                  flexShrink: 0,
+                  borderColor: ratingSummary?.eligibility.hasRated ? '#555' : '#0079D3',
+                  color: ratingSummary?.eligibility.hasRated ? '#999' : '#38aaff',
+                  backgroundColor: ratingSummary?.eligibility.hasRated ? '#303030' : 'transparent',
+                  cursor: ratingSummary?.eligibility.hasRated ? 'not-allowed' : 'pointer',
+                  opacity: ratingSummary?.eligibility.hasRated ? 0.7 : 1,
+                }}
+              >
+                {ratingSummary?.eligibility.hasRated ? 'Rated' : 'Rate'}
+              </button>
+            </div>
             <p style={styles.subtitle}>School: {selectedFaculty.school}</p>
             <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '7px', margin: '0 0 18px' }}>
               <strong style={{ fontSize: '0.9rem' }}>Courses:</strong>
