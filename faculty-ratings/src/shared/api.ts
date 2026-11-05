@@ -113,3 +113,42 @@ export type FacultyRatingSummary = {
 export type FacultyRatingSubmissionResponse =
   | { status: 'success'; message: string }
   | ApiErrorResponse;
+
+
+export type CourseRecord = {
+  id: string;
+  code: string;
+  createdAt: number;
+  createdByUsername: string;
+  approvedAt?: number;
+  approvedByUsername?: string;
+};
+
+export type CourseRequest = {
+  id: string;
+  code: string;
+  createdAt: number;
+  submittedByUsername: string;
+  submittedByUserId: string;
+  status: 'pending' | 'approved' | 'rejected';
+  rejectionReason?: string;
+  customReason?: string;
+  reviewedAt?: number;
+  reviewedByUsername?: string;
+};
+
+export type CourseListResponse = {
+  status: 'success';
+  courses: CourseRecord[];
+  total: number;
+};
+
+export type CourseRequestSubmissionResponse =
+  | { status: 'success'; message: string; requestId: string }
+  | ApiErrorResponse;
+
+export type ModeratorCourseRequestsResponse = {
+  status: 'success';
+  requests: CourseRequest[];
+  total: number;
+};
