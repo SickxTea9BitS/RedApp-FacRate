@@ -211,18 +211,50 @@ api.post('/requests', async (c) => {
     const school =
       typeof body.school === 'string' ? body.school.trim().toUpperCase() : '';
 
-    const requestedCourseCodes = Array.isArray(body.courseCodes)
-      ? body.courseCodes.filter((code): code is string => typeof code === 'string')
-      : [];
+    const requestedCourseCodes: string[] = [];
+    if (Array.isArray(body.courseCodes)) {
+      for (const submittedCode of body.courseCodes) {
+        if (typeof submittedCode !== 'string') {
+          return c.json<ApiErrorResponse>(
+            { status: 'error', message: 'Invalid course selection.' },
+            400
+          );
+        }
+        const normalizedCode = submittedCode.trim().toUpperCase();
+        if (!/^[A-Z]{3}[0-9]{4}$/.test(normalizedCode)) {
+          return c.json<ApiErrorResponse>(
+            { status: 'error', message: `Invalid course code: ${normalizedCode}.` },
+            400
+          );
+        }
+        if (requestedCourseCodes.includes(normalizedCode)) {
+          return c.json<ApiErrorResponse>(
+            { status: 'error', message: 'Duplicate course selections are not allowed.' },
+            400
+          );
+        }
+        requestedCourseCodes.push(normalizedCode);
+      }
+    }
 
-    if (requestedCourseCodes.length > 20 || new Set(requestedCourseCodes).size !== requestedCourseCodes.length) {
-      return c.json<ApiErrorResponse>({ status: 'error', message: 'Select no more than 20 unique courses.' }, 400);
+    if (requestedCourseCodes.length > 20) {
+      return c.json<ApiErrorResponse>(
+        { status: 'error', message: 'Select no more than 20 courses.' },
+        400
+      );
     }
 
     const approvedCourses = await redis.hGetAll(COURSES_HASH_KEY);
-    const invalidCourse = requestedCourseCodes.find((code) => !approvedCourses[code]);
-    if (invalidCourse) {
-      return c.json<ApiErrorResponse>({ status: 'error', message: `${invalidCourse} is not an approved course. Refresh the course list and try again.` }, 400);
+    for (const requestedCode of requestedCourseCodes) {
+      if (!Object.prototype.hasOwnProperty.call(approvedCourses, requestedCode)) {
+        return c.json<ApiErrorResponse>(
+          {
+            status: 'error',
+            message: `${requestedCode} is not an approved course. Refresh the course list and try again.`,
+          },
+          400
+        );
+      }
     }
 
     if (!firstName || !lastName) {
