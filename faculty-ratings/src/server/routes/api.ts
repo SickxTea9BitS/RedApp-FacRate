@@ -640,6 +640,7 @@ api.post('/mod/requests/:id/approve', async (c) => {
       middleName?: unknown;
       lastName?: unknown;
       school?: unknown;
+      courseCodes?: unknown;
     }>();
 
     const firstName =
@@ -676,6 +677,29 @@ api.post('/mod/requests/:id/approve', async (c) => {
       );
     }
 
+    const requestedCourseCodes: string[] = [];
+    if (Array.isArray(body.courseCodes)) {
+      for (const submittedCode of body.courseCodes) {
+        if (typeof submittedCode !== 'string') {
+          return c.json<ApiErrorResponse>({ status: 'error', message: 'Invalid course selection.' }, 400);
+        }
+        const normalizedCode = submittedCode.trim().toUpperCase();
+        if (!/^[A-Z]{3}[0-9]{4}$/.test(normalizedCode) || requestedCourseCodes.includes(normalizedCode)) {
+          return c.json<ApiErrorResponse>({ status: 'error', message: 'Course selections must be valid, unique course codes.' }, 400);
+        }
+        requestedCourseCodes.push(normalizedCode);
+      }
+    }
+    if (requestedCourseCodes.length > 20) {
+      return c.json<ApiErrorResponse>({ status: 'error', message: 'Select no more than 20 courses.' }, 400);
+    }
+    const approvedCoursesForApproval = await redis.hGetAll(COURSES_HASH_KEY);
+    for (const courseCode of requestedCourseCodes) {
+      if (!Object.prototype.hasOwnProperty.call(approvedCoursesForApproval, courseCode)) {
+        return c.json<ApiErrorResponse>({ status: 'error', message: `${courseCode} is not an approved course.` }, 400);
+      }
+    }
+
     const storedRequest = await redis.hGet(REQUESTS_HASH_KEY, requestId);
 
     if (!storedRequest) {
@@ -694,15 +718,13 @@ api.post('/mod/requests/:id/approve', async (c) => {
       );
     }
 
-    const approvedCoursesForApproval = await redis.hGetAll(COURSES_HASH_KEY);
-
     const approvedRecord: FacultyRecord = {
       id: request.id,
       firstName,
       middleName,
       lastName,
       school,
-      courseCodes: (request.courseCodes ?? []).filter((code) => Boolean(approvedCoursesForApproval[code])),
+      courseCodes: requestedCourseCodes,
       createdAt: Date.now(),
     };
 
@@ -738,6 +760,7 @@ api.post('/mod/requests/:id/approve', async (c) => {
       middleName,
       lastName,
       school,
+      courseCodes: requestedCourseCodes,
       status: 'approved',
       reviewedAt: now,
       reviewedByUsername: moderator.username,
