@@ -1,18 +1,40 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import type { MouseEvent } from 'react';
 import { createRoot } from 'react-dom/client';
-import { requestExpandedMode } from '@devvit/web/client';
+import { getWebViewMode, requestExpandedMode } from '@devvit/web/client';
 import './index.css';
 
 const Preview = () => {
   const [opening, setOpening] = useState(false);
   const [error, setError] = useState('');
 
-  const openFacultyRatings = async (event: MouseEvent<HTMLButtonElement>) => {
+  useEffect(() => {
+    const resetLauncher = () => {
+      if (getWebViewMode() === 'inline') {
+        setOpening(false);
+        setError('');
+      }
+    };
+
+    window.addEventListener('focus', resetLauncher);
+    window.addEventListener('pageshow', resetLauncher);
+
+    return () => {
+      window.removeEventListener('focus', resetLauncher);
+      window.removeEventListener('pageshow', resetLauncher);
+    };
+  }, []);
+
+  const openFacultyRatings = (event: MouseEvent<HTMLButtonElement>) => {
     setOpening(true);
     setError('');
+
     try {
-      await requestExpandedMode(event.nativeEvent, 'expanded');
+      void requestExpandedMode(event.nativeEvent, 'expanded').catch((cause: unknown) => {
+        console.error('Unable to open Faculty Ratings:', cause);
+        setError('Unable to open Faculty Ratings. Please try again.');
+        setOpening(false);
+      });
     } catch (cause) {
       console.error('Unable to open Faculty Ratings:', cause);
       setError('Unable to open Faculty Ratings. Please try again.');
@@ -26,7 +48,7 @@ const Preview = () => {
       style={{
         boxSizing: 'border-box',
         width: '100%',
-        padding: '22px',
+        padding: '20px 22px',
         borderRadius: '12px',
         background: '#1a1a1b',
         color: '#fff',
@@ -42,7 +64,7 @@ const Preview = () => {
       </p>
       <button
         type="button"
-        onClick={(event) => void openFacultyRatings(event)}
+        onClick={openFacultyRatings}
         disabled={opening}
         style={{
           padding: '12px 22px',
@@ -56,7 +78,7 @@ const Preview = () => {
           opacity: opening ? 0.75 : 1,
         }}
       >
-        {opening ? 'Opening...' : 'Open Faculty Ratings'}
+        {opening ? 'Opening...' : 'Launch App'}
       </button>
       {error && <p role="alert" style={{ color: '#ffb3b3', margin: '12px 0 0' }}>{error}</p>}
     </main>
