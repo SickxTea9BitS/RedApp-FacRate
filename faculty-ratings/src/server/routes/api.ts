@@ -671,6 +671,7 @@ api.post('/mod/requests/:id/approve', async (c) => {
       middleName,
       lastName,
       school,
+      courseCodes: (request.courseCodes ?? []).filter((code) => Boolean(approvedCoursesForApproval[code])),
       createdAt: Date.now(),
     };
 
