@@ -23,6 +23,13 @@ export type FacultyRequest = {
   reviewedByUsername?: string;
 };
 
+export type FacultyApprovalInput = {
+  firstName: string;
+  middleName: string;
+  lastName: string;
+  school: string;
+};
+
 export type FacultyListResponse = {
   status: 'success';
   faculty: FacultyRecord[];
