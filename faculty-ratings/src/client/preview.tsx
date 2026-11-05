@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import type { MouseEvent } from 'react';
 import { createRoot } from 'react-dom/client';
 import { requestExpandedMode } from '@devvit/web/client';
 import './index.css';
@@ -7,7 +8,7 @@ const Preview = () => {
   const [opening, setOpening] = useState(false);
   const [error, setError] = useState('');
 
-  const openFacultyRatings = async (event: React.MouseEvent<HTMLButtonElement>) => {
+  const openFacultyRatings = async (event: MouseEvent<HTMLButtonElement>) => {
     setOpening(true);
     setError('');
     try {
