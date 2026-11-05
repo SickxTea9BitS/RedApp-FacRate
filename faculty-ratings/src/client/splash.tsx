@@ -453,8 +453,13 @@ export const App = () => {
       const result = await response.json() as ModerationActionResponse;
       if (!response.ok || result.status !== 'success') throw new Error(result.status === 'error' ? result.message : 'Unable to process request.');
       setCourseModerationMessage(result.message);
-      await loadModeratorFacultyCourseRequests();
-      await loadModeratorCourseRequests();
+      setModeratorFacultyCourseRequests((current) => current.filter((item) => item.id !== request.id));
+      setModeratorFacultyCourseSelection((current) => {
+        const next = { ...current };
+        delete next[request.id];
+        return next;
+      });
+      await Promise.all([loadModeratorFacultyCourseRequests(), loadModeratorCourseRequests()]);
     } catch (error) {
       setCourseModerationError(error instanceof Error ? error.message : 'Unable to process request.');
     }
@@ -1662,26 +1667,25 @@ export const App = () => {
               ← Back to Home
             </button>
 
-            <h1 style={styles.title}>Moderator Dashboard</h1>
+            <h1 style={{ ...styles.title, fontSize: '2.15rem', marginBottom: '8px' }}>Moderator Dashboard</h1>
 
-            <p style={styles.subtitle}>
-              Review student-submitted faculty requests. Approving a request
-              adds the faculty member to the public directory.
+            <p style={{ ...styles.subtitle, marginBottom: '24px', maxWidth: '620px' }}>
+              Manage submissions, review course additions, and maintain the faculty directory.
             </p>
 
             {adminSection === 'menu' && (
               <div style={{ display: 'grid', gap: '14px', marginTop: '22px' }}>
-                <button type="button" style={{ ...styles.card, cursor: 'pointer', textAlign: 'left', padding: '20px' }} onClick={() => setAdminSection('faculty-requests')}>
+                <button type="button" style={{ ...styles.card, cursor: 'pointer', textAlign: 'left', padding: '22px', display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: '9px', minHeight: '126px' }} onClick={() => { setAdminSection('faculty-requests'); void loadModeratorRequests(); }}>
                   <strong style={{ fontSize: '1.1rem' }}>Pending Faculty Requests</strong>
                   <span style={{ ...styles.muted, marginTop: '7px' }}>{moderatorRequests.length ? `${moderatorRequests.length} pending request(s)` : 'No pending requests'}</span>
                   <span style={{ color: '#38aaff', marginTop: '10px' }}>Open requests →</span>
                 </button>
-                <button type="button" style={{ ...styles.card, cursor: 'pointer', textAlign: 'left', padding: '20px' }} onClick={() => setAdminSection('course-requests')}>
+                <button type="button" style={{ ...styles.card, cursor: 'pointer', textAlign: 'left', padding: '22px', display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: '9px', minHeight: '126px' }} onClick={() => { setAdminSection('course-requests'); void loadModeratorCourseRequests(); void loadModeratorFacultyCourseRequests(); }}>
                   <strong style={{ fontSize: '1.1rem' }}>Pending Course Requests</strong>
                   <span style={{ ...styles.muted, marginTop: '7px' }}>{moderatorCourseRequests.length + moderatorFacultyCourseRequests.length ? `${moderatorCourseRequests.length + moderatorFacultyCourseRequests.length} pending request(s)` : 'No pending requests'}</span>
                   <span style={{ color: '#38aaff', marginTop: '10px' }}>Open requests →</span>
                 </button>
-                <button type="button" style={{ ...styles.card, cursor: 'pointer', textAlign: 'left', padding: '20px' }} onClick={() => setAdminSection('faculties')}>
+                <button type="button" style={{ ...styles.card, cursor: 'pointer', textAlign: 'left', padding: '22px', display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: '9px', minHeight: '126px' }} onClick={() => { setAdminSection('faculties'); void loadAllFacultyForModeration(); }}>
                   <strong style={{ fontSize: '1.1rem' }}>Edit Faculties</strong>
                   <span style={{ ...styles.muted, marginTop: '7px' }}>{allFacultyForModeration.length} faculty member(s) in directory</span>
                   <span style={{ color: '#38aaff', marginTop: '10px' }}>Browse faculty →</span>
