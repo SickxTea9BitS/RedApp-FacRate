@@ -382,6 +382,7 @@ export const App = () => {
     setSelectedSchool('');
     setSelectedCourse('');
     setSelectedFaculty(null);
+    void loadAvailableCourses();
     setCurrentView('faculty');
   };
 
