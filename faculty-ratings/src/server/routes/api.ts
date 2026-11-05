@@ -110,7 +110,9 @@ api.get('/faculty', async (c) => {
 
     const storedRecords = await redis.hGetAll(FACULTY_HASH_KEY);
 
-    const faculty: FacultyRecord[] = Object.entries(storedRecords)
+    const currentUserId = context.userId;
+
+    const records = Object.entries(storedRecords)
       .flatMap(([id, value]) => {
         try {
           const record = JSON.parse(value) as FacultyRecord;
@@ -137,6 +139,19 @@ api.get('/faculty', async (c) => {
         return matchesSearch && matchesSchool;
       })
       .sort((a, b) => getFullName(a).localeCompare(getFullName(b)));
+
+    const faculty = await Promise.all(
+      records.map(async (record) => {
+        const ratings = await redis.hGetAll(
+          `${RATINGS_KEY_PREFIX}${record.id}`
+        );
+        return {
+          ...record,
+          ratingCount: Object.keys(ratings).length,
+          hasRated: currentUserId ? Boolean(ratings[currentUserId]) : false,
+        };
+      })
+    );
 
     return c.json<FacultyListResponse>({
       status: 'success',
