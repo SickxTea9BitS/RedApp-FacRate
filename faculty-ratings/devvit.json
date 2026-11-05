@@ -10,7 +10,7 @@
     "entrypoints": {
       "default": {
         "entry": "preview.html",
-        "height": "short"
+        "height": "regular"
       },
       "game": {
         "entry": "game.html"
@@ -38,7 +38,7 @@
         "description": "Show a simple form",
         "location": "subreddit",
         "forUserType": "moderator",
-        "endpoint": "/internal/menu/example-form"
+        "endpoint": "/internal/form/example-submit"
       }
     ]
   },
