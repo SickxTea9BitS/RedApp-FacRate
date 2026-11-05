@@ -4,6 +4,7 @@ export type FacultyRecord = {
   middleName: string;
   lastName: string;
   school: string;
+  courseCodes?: string[];
   createdAt: number;
   ratingCount?: number;
   hasRated?: boolean;
@@ -15,6 +16,7 @@ export type FacultyRequest = {
   middleName: string;
   lastName: string;
   school: string;
+  courseCodes?: string[];
   createdAt: number;
   submittedByUsername: string;
   submittedByUserId: string;
