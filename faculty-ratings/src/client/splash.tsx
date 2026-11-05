@@ -38,7 +38,7 @@ const REJECTION_REASONS = [
 ];
 
 type View = 'home' | 'faculty' | 'faculty-detail' | 'request' | 'course-request' | 'admin';
-type RatingMode = 'rate' | 'check';
+type RatingMode = 'check';
 
 const styles = {
   page: {
@@ -130,7 +130,7 @@ const formatDate = (timestamp: number) =>
 
 export const App = () => {
   const [currentView, setCurrentView] = useState<View>('home');
-  const [ratingMode, setRatingMode] = useState<RatingMode>('rate');
+  const [ratingMode, setRatingMode] = useState<RatingMode>('check');
   const [search, setSearch] = useState('');
   const [selectedSchool, setSelectedSchool] = useState('');
   const [selectedCourse, setSelectedCourse] = useState('');
@@ -187,6 +187,8 @@ export const App = () => {
   const [editCourseSearch, setEditCourseSearch] = useState('');
   const [facultyEditBusy, setFacultyEditBusy] = useState(false);
   const [facultyEditMessage, setFacultyEditMessage] = useState('');
+  const [adminSection, setAdminSection] = useState<'menu' | 'faculty-requests' | 'course-requests' | 'faculties'>('menu');
+  const [facultyAdminSearch, setFacultyAdminSearch] = useState('');
 
   const [ratingSummary, setRatingSummary] = useState<FacultyRatingSummary | null>(null);
   const [ratingValues, setRatingValues] = useState<FacultyRatingValues>({
@@ -602,6 +604,8 @@ export const App = () => {
   };
 
   const openAdminDashboard = () => {
+    setAdminSection('menu');
+    setFacultyAdminSearch('');
     setCurrentView('admin');
     setActiveRejectId('');
     setRejectionReason('');
@@ -834,13 +838,6 @@ export const App = () => {
               }}
             >
               <button
-                style={styles.button}
-                onClick={() => openFacultyList('rate')}
-              >
-                Rate a Faculty
-              </button>
-
-              <button
                 style={styles.secondaryButton}
                 onClick={() => openFacultyList('check')}
               >
@@ -885,7 +882,7 @@ export const App = () => {
             </button>
 
             <h1 style={styles.title}>
-              {ratingMode === 'rate' ? 'Rate a Faculty' : 'Faculty Ratings'}
+              Faculty Ratings
             </h1>
 
             <p style={styles.subtitle}>
@@ -1587,6 +1584,32 @@ export const App = () => {
               adds the faculty member to the public directory.
             </p>
 
+            {adminSection === 'menu' && (
+              <div style={{ display: 'grid', gap: '14px', marginTop: '22px' }}>
+                <button type="button" style={{ ...styles.card, cursor: 'pointer', textAlign: 'left', padding: '20px' }} onClick={() => setAdminSection('faculty-requests')}>
+                  <strong style={{ fontSize: '1.1rem' }}>Pending Faculty Requests</strong>
+                  <span style={{ ...styles.muted, marginTop: '7px' }}>{moderatorRequests.length ? `${moderatorRequests.length} pending request(s)` : 'No pending requests'}</span>
+                  <span style={{ color: '#38aaff', marginTop: '10px' }}>Open requests →</span>
+                </button>
+                <button type="button" style={{ ...styles.card, cursor: 'pointer', textAlign: 'left', padding: '20px' }} onClick={() => setAdminSection('course-requests')}>
+                  <strong style={{ fontSize: '1.1rem' }}>Pending Course Requests</strong>
+                  <span style={{ ...styles.muted, marginTop: '7px' }}>{moderatorCourseRequests.length ? `${moderatorCourseRequests.length} pending request(s)` : 'No pending requests'}</span>
+                  <span style={{ color: '#38aaff', marginTop: '10px' }}>Open requests →</span>
+                </button>
+                <button type="button" style={{ ...styles.card, cursor: 'pointer', textAlign: 'left', padding: '20px' }} onClick={() => setAdminSection('faculties')}>
+                  <strong style={{ fontSize: '1.1rem' }}>Edit Faculties</strong>
+                  <span style={{ ...styles.muted, marginTop: '7px' }}>{allFacultyForModeration.length} faculty member(s) in directory</span>
+                  <span style={{ color: '#38aaff', marginTop: '10px' }}>Browse faculty →</span>
+                </button>
+              </div>
+            )}
+
+            {adminSection !== 'menu' && (
+              <button type="button" style={{ ...styles.secondaryButton, marginBottom: '18px', padding: '8px 14px' }} onClick={() => setAdminSection('menu')}>← Dashboard</button>
+            )}
+
+            {adminSection === 'faculty-requests' && (
+              <>
             <div
               style={{
                 display: 'flex',
@@ -1991,6 +2014,11 @@ export const App = () => {
             )}
 
 
+              </>
+            )}
+
+            {adminSection === 'faculties' && (
+              <>
             <div style={{ borderTop: '1px solid #444', marginTop: '30px', paddingTop: '24px' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px', marginBottom: '16px' }}>
                 <h2 style={{ margin: 0 }}>Manage Faculty ({allFacultyForModeration.length})</h2>
@@ -2001,7 +2029,8 @@ export const App = () => {
               {facultyEditMessage && <p role="status" style={{ color: '#8de0ad' }}>{facultyEditMessage}</p>}
               {facultyManagementError && <p role="alert" style={{ color: '#ffb3b3' }}>{facultyManagementError}</p>}
               {facultyManagementLoading && <p style={styles.muted}>Loading faculty directory...</p>}
-              {!facultyManagementLoading && allFacultyForModeration.map((record) => (
+              <input type="search" style={styles.input} placeholder="Search faculty by name..." value={facultyAdminSearch} onChange={(event) => setFacultyAdminSearch(event.target.value)} />
+              {!facultyManagementLoading && allFacultyForModeration.filter((record) => getFullName(record).toLowerCase().includes(facultyAdminSearch.trim().toLowerCase())).map((record) => (
                 <article key={record.id} style={{ ...styles.card, display: 'grid', gap: '10px', marginBottom: '10px' }}>
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px' }}>
                     <div>
@@ -2047,6 +2076,11 @@ export const App = () => {
                 </article>
               ))}
             </div>
+              </>
+            )}
+
+            {adminSection === 'course-requests' && (
+              <>
             <div style={{ borderTop: '1px solid #444', marginTop: '30px', paddingTop: '24px' }}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', marginBottom: '16px' }}>
                 <h2 style={{ margin: 0 }}>Course Requests ({moderatorCourseRequests.length})</h2>
@@ -2119,6 +2153,8 @@ export const App = () => {
                 </article>
               ))}
             </div>
+              </>
+            )}
           </section>
         )}
       </main>
