@@ -877,13 +877,47 @@ export const App = () => {
                         }}
                       />
                     </div>
+                    <div className="rating-legend">
+                      {(key === 'teaching'
+                        ? [
+                            ['#111111', 'BLACK', 'It is hard to grasp what they teach'],
+                            ['#ff9800', 'ORANGE', 'Not good, but not bad either'],
+                            ['#4caf50', 'GREEN', 'Their teaching is pretty easy to grasp'],
+                          ]
+                        : key === 'internalMarking' || key === 'examEvaluation'
+                          ? [
+                              ['#111111', 'BLACK', 'Unnecessarily Strict evaluation'],
+                              ['#e53935', 'RED', 'Strict evaluation'],
+                              ['#ff9800', 'ORANGE', 'Fair evaluation'],
+                              ['#ffeb3b', 'YELLOW', 'Lenient evaluation'],
+                              ['#4caf50', 'GREEN', 'Free Marks'],
+                            ]
+                          : key === 'overallRecommendation'
+                            ? [
+                                ['#111111', 'BLACK', "It's better to drop the course"],
+                                ['#e53935', 'RED', 'Only as a last option'],
+                                ['#ff9800', 'ORANGE', 'Okay, not bad but not great either'],
+                                ['#ffeb3b', 'YELLOW', 'Definitely good as second option'],
+                                ['#4caf50', 'GREEN', 'Goated, would recommend for sure'],
+                              ]
+                            : [
+                                ['#111111', '0–20 Marks', ''],
+                                ['#e53935', '20–40 Marks', ''],
+                                ['#ff9800', '40–60 Marks', ''],
+                                ['#ffeb3b', '60–80 Marks', ''],
+                                ['#4caf50', '80–100 Marks', ''],
+                              ]
+                      ).map(([color, name, description]) => (
+                        <div className="rating-legend-item" key={name}>
+                          <span className="rating-legend-swatch" style={{ backgroundColor: color }} />
+                          <span><strong>{name}</strong>{description ? ` — ${description}` : ''}</span>
+                        </div>
+                      ))}
+                    </div>
                   </div>
                 );
               })}
 
-              <div style={{ display: 'flex', justifyContent: 'space-between', color: '#aaa', fontSize: '0.78rem' }}>
-                <span>0% · Poor</span><span>25%</span><span>50%</span><span>75%</span><span>100% · Excellent</span>
-              </div>
             </div>
             )}
 
@@ -950,7 +984,7 @@ export const App = () => {
                             {ratingValues[key]} {isClassAverage ? 'Marks' : '%'}
                           </div>
                           <input
-                            className={isTeaching ? 'rating-slider rating-slider-three' : 'rating-slider'}
+                            className="rating-slider"
                             type="range"
                             min="0"
                             max="100"
