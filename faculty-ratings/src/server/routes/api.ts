@@ -653,6 +653,7 @@ const RATING_FIELDS = [
   'internalMarking',
   'examEvaluation',
   'overallRecommendation',
+  'classAverage',
 ] as const;
 
 type RatingValues = {
@@ -660,6 +661,7 @@ type RatingValues = {
   internalMarking: number;
   examEvaluation: number;
   overallRecommendation: number;
+  classAverage: number;
 };
 
 const getRatingEligibility = async () => {
@@ -713,19 +715,34 @@ const getRatingEligibility = async () => {
   };
 };
 
-const isValidRatingValues = (value: unknown): value is RatingValues => {
+type StoredRatingValues = Omit<RatingValues, 'classAverage'> & {
+  classAverage?: number;
+};
+
+const isValidStoredRating = (value: unknown): value is StoredRatingValues => {
   if (!value || typeof value !== 'object') return false;
   const record = value as Record<string, unknown>;
-  return RATING_FIELDS.every((field) => {
+  const requiredFields = [
+    'teaching',
+    'internalMarking',
+    'examEvaluation',
+    'overallRecommendation',
+  ] as const;
+  const requiredValid = requiredFields.every((field) => {
     const rating = record[field];
-    return (
-      typeof rating === 'number' &&
-      Number.isInteger(rating) &&
-      rating >= 0 &&
-      rating <= 100
-    );
+    return typeof rating === 'number' && Number.isInteger(rating) && rating >= 0 && rating <= 100;
   });
+  const classAverageValid =
+    record.classAverage === undefined ||
+    (typeof record.classAverage === 'number' &&
+      Number.isInteger(record.classAverage) &&
+      record.classAverage >= 0 &&
+      record.classAverage <= 100);
+  return requiredValid && classAverageValid;
 };
+
+const isValidRatingValues = (value: unknown): value is RatingValues =>
+  isValidStoredRating(value) && typeof value.classAverage === 'number';
 
 api.get('/faculty/:id/ratings', async (c) => {
   try {
@@ -745,7 +762,7 @@ api.get('/faculty/:id/ratings', async (c) => {
     const ratings = Object.values(storedRatings).flatMap((value) => {
       try {
         const parsed = JSON.parse(value) as unknown;
-        return isValidRatingValues(parsed) ? [parsed] : [];
+        return isValidStoredRating(parsed) ? [parsed] : [];
       } catch {
         return [];
       }
@@ -757,13 +774,19 @@ api.get('/faculty/:id/ratings', async (c) => {
       internalMarking: 0,
       examEvaluation: 0,
       overallRecommendation: 0,
+      classAverage: 0,
     };
 
     if (count > 0) {
       for (const field of RATING_FIELDS) {
-        averages[field] = Math.round(
-          ratings.reduce((sum, rating) => sum + rating[field], 0) / count
-        );
+        const values = ratings
+          .map((rating) => rating[field])
+          .filter((value): value is number => typeof value === 'number');
+        if (values.length > 0) {
+          averages[field] = Math.round(
+            values.reduce((sum, value) => sum + value, 0) / values.length
+          );
+        }
       }
     }
 
@@ -833,7 +856,7 @@ api.post('/faculty/:id/ratings', async (c) => {
       return c.json<ApiErrorResponse>(
         {
           status: 'error',
-          message: 'All four ratings must be whole numbers from 0 to 100.',
+          message: 'All five ratings must be whole numbers from 0 to 100.',
         },
         400
       );
