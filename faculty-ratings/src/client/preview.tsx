@@ -52,41 +52,74 @@ const Preview = () => {
 
   return (
     <main className="faculty-preview">
-      <img
-        src="/vit-bhopal-logo.png"
-        alt="VIT Bhopal University logo"
+      <section
         style={{
-          display: 'block',
-          width: '180px',
-          maxWidth: '55%',
-          height: '100px',
-          objectFit: 'contain',
-          marginBottom: '12px',
-        }}
-      />
-      <h1 style={{ fontSize: '1.25rem', margin: '0 0 6px' }}>r/vitbhopal Faculty Ratings</h1>
-      <p style={{ color: '#aaa', fontSize: '0.9rem', margin: '0 auto 12px', lineHeight: 1.35, maxWidth: '540px' }}>
-        A reddit app to help Lions of r/vitbhopal to share their faculty ratings to help with FFCS.
-      </p>
-      <button
-        type="button"
-        onClick={openFacultyRatings}
-        disabled={opening}
-        style={{
-          padding: '10px 18px',
-          borderRadius: '8px',
-          border: 'none',
-          background: '#0079D3',
-          color: '#fff',
-          fontSize: '0.95rem',
-          fontWeight: 700,
-          cursor: opening ? 'wait' : 'pointer',
-          opacity: opening ? 0.75 : 1,
+          boxSizing: 'border-box',
+          display: 'flex',
+          width: '100%',
+          maxWidth: '420px',
+          minHeight: 'min(680px, calc(100vh - 40px))',
+          flexDirection: 'column',
+          alignItems: 'center',
+          justifyContent: 'space-evenly',
+          gap: '22px',
+          padding: '28px 12px',
+          textAlign: 'center',
         }}
       >
-        {opening ? 'Opening...' : 'Launch App'}
-      </button>
-      {error && <p role="alert" style={{ color: '#ffb3b3', fontSize: '0.85rem', margin: '10px 0 0' }}>{error}</p>}
+        <img
+          src="/vit-bhopal-logo.png"
+          alt="VIT Bhopal University logo"
+          style={{
+            display: 'block',
+            boxSizing: 'border-box',
+            width: '240px',
+            maxWidth: '90%',
+            height: '145px',
+            padding: '12px',
+            borderRadius: '12px',
+            background: '#fff',
+            objectFit: 'contain',
+          }}
+        />
+        <h1 style={{ fontSize: '1.4rem', lineHeight: 1.3, margin: 0 }}>
+          r/vitbhopal Faculty Ratings
+        </h1>
+        <p
+          style={{
+            width: '100%',
+            color: '#aaa',
+            fontSize: '0.95rem',
+            lineHeight: 1.55,
+            margin: 0,
+          }}
+        >
+          A reddit app to help Lions of r/vitbhopal to share their faculty ratings to help with FFCS.
+        </p>
+        <button
+          type="button"
+          onClick={openFacultyRatings}
+          disabled={opening}
+          style={{
+            padding: '13px 24px',
+            borderRadius: '8px',
+            border: 'none',
+            background: '#0079D3',
+            color: '#fff',
+            fontSize: '1rem',
+            fontWeight: 700,
+            cursor: opening ? 'wait' : 'pointer',
+            opacity: opening ? 0.75 : 1,
+          }}
+        >
+          {opening ? 'Opening...' : 'Launch App'}
+        </button>
+        {error && (
+          <p role="alert" style={{ color: '#ffb3b3', fontSize: '0.85rem', margin: 0 }}>
+            {error}
+          </p>
+        )}
+      </section>
     </main>
   );
 };
