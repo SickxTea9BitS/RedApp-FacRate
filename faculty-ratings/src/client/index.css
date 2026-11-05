@@ -330,7 +330,7 @@ textarea:focus {
   transform: translateY(1px) scale(0.99);
 }
 
-.app-screen input,
+.app-screen input:not([type="range"]),
 .app-screen select,
 .app-screen textarea {
   min-height: 48px;
@@ -348,7 +348,7 @@ textarea:focus {
   opacity: 0.85;
 }
 
-.app-screen input:focus,
+.app-screen input:not([type="range"]):focus,
 .app-screen select:focus,
 .app-screen textarea:focus {
   border-color: #a9c8ff !important;
