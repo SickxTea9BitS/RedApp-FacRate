@@ -86,6 +86,7 @@ api.get('/faculty', async (c) => {
   try {
     const search = (c.req.query('search') ?? '').trim().toLowerCase();
     const school = (c.req.query('school') ?? '').trim().toUpperCase();
+    const courseCode = (c.req.query('course') ?? '').trim().toUpperCase();
 
     if (school && !VALID_SCHOOLS.includes(school)) {
       return c.json<ApiErrorResponse>(
@@ -124,8 +125,10 @@ api.get('/faculty', async (c) => {
         const fullName = getFullName(record).toLowerCase();
         const matchesSearch = !search || fullName.includes(search);
         const matchesSchool = !school || record.school === school;
+        const assignedCourses = Array.isArray(record.courseCodes) ? record.courseCodes : [];
+        const matchesCourse = !courseCode || assignedCourses.includes(courseCode);
 
-        return matchesSearch && matchesSchool;
+        return matchesSearch && matchesSchool && matchesCourse;
       })
       .sort((a, b) => getFullName(a).localeCompare(getFullName(b)));
 
@@ -528,6 +531,110 @@ api.post('/mod/course-requests/:id/reject', async (c) => {
   } catch (error) {
     console.error('Course rejection error:', error);
     return c.json<ApiErrorResponse>({ status: 'error', message: 'Unable to reject this course request.' }, 500);
+  }
+});
+
+
+api.put('/mod/faculty/:id', async (c) => {
+  try {
+    const moderator = await getModerator();
+    if (!moderator) {
+      return c.json<ApiErrorResponse>({ status: 'error', message: 'Moderator permissions are required.' }, 403);
+    }
+
+    const facultyId = c.req.param('id');
+    if (!facultyId || facultyId.length > 100) {
+      return c.json<ApiErrorResponse>({ status: 'error', message: 'Invalid faculty ID.' }, 400);
+    }
+
+    const body = await c.req.json<{
+      firstName?: unknown;
+      middleName?: unknown;
+      lastName?: unknown;
+      school?: unknown;
+      courseCodes?: unknown;
+    }>();
+
+    const firstName = typeof body.firstName === 'string' ? body.firstName.trim() : '';
+    const middleName = typeof body.middleName === 'string' ? body.middleName.trim() : '';
+    const lastName = typeof body.lastName === 'string' ? body.lastName.trim() : '';
+    const school = typeof body.school === 'string' ? body.school.trim().toUpperCase() : '';
+
+    if (!firstName || !lastName) {
+      return c.json<ApiErrorResponse>({ status: 'error', message: 'First name and last name are required.' }, 400);
+    }
+    if (firstName.length > 60 || middleName.length > 60 || lastName.length > 60) {
+      return c.json<ApiErrorResponse>({ status: 'error', message: 'Names cannot exceed 60 characters.' }, 400);
+    }
+    if (!VALID_SCHOOLS.includes(school)) {
+      return c.json<ApiErrorResponse>({ status: 'error', message: 'Please select a valid school.' }, 400);
+    }
+
+    if (!Array.isArray(body.courseCodes) || body.courseCodes.length > 20) {
+      return c.json<ApiErrorResponse>({ status: 'error', message: 'Select up to 20 courses.' }, 400);
+    }
+
+    const courseCodes: string[] = [];
+    for (const value of body.courseCodes) {
+      if (typeof value !== 'string') {
+        return c.json<ApiErrorResponse>({ status: 'error', message: 'Invalid course selection.' }, 400);
+      }
+      const code = value.trim().toUpperCase();
+      if (!COURSE_CODE_PATTERN.test(code) || courseCodes.includes(code)) {
+        return c.json<ApiErrorResponse>({ status: 'error', message: 'Course selections must be valid and unique.' }, 400);
+      }
+      courseCodes.push(code);
+    }
+
+    const [storedFaculty, approvedCourses] = await Promise.all([
+      redis.hGet(FACULTY_HASH_KEY, facultyId),
+      redis.hGetAll(COURSES_HASH_KEY),
+    ]);
+    if (!storedFaculty) {
+      return c.json<ApiErrorResponse>({ status: 'error', message: 'Faculty member not found.' }, 404);
+    }
+
+    for (const code of courseCodes) {
+      if (!Object.prototype.hasOwnProperty.call(approvedCourses, code)) {
+        return c.json<ApiErrorResponse>({ status: 'error', message: `${code} is not an approved course.` }, 400);
+      }
+    }
+
+    const existingRecord = JSON.parse(storedFaculty) as FacultyRecord;
+    const updatedRecord: FacultyRecord = {
+      ...existingRecord,
+      firstName,
+      middleName,
+      lastName,
+      school,
+      courseCodes,
+    };
+
+    const allFaculty = await redis.hGetAll(FACULTY_HASH_KEY);
+    const duplicate = Object.entries(allFaculty).some(([id, value]) => {
+      if (id === facultyId) return false;
+      try {
+        const record = JSON.parse(value) as FacultyRecord;
+        return record.school === school &&
+          normalizeName(getFullName(record)) === normalizeName(getFullName(updatedRecord));
+      } catch {
+        return false;
+      }
+    });
+    if (duplicate) {
+      return c.json<ApiErrorResponse>({ status: 'error', message: 'Another faculty member with this name already exists in this school.' }, 409);
+    }
+
+    await redis.hSet(FACULTY_HASH_KEY, { [facultyId]: JSON.stringify(updatedRecord) });
+    console.log(`Faculty ${facultyId} updated by moderator ${moderator.username}`);
+
+    return c.json<ModerationActionResponse>({
+      status: 'success',
+      message: `${getFullName(updatedRecord)} was updated successfully.`,
+    });
+  } catch (error) {
+    console.error('Faculty edit error:', error);
+    return c.json<ApiErrorResponse>({ status: 'error', message: 'Unable to update faculty details.' }, 500);
   }
 });
 
