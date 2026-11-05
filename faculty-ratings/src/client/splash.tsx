@@ -152,6 +152,13 @@ export const App = () => {
   const [rejectionReason, setRejectionReason] = useState('');
   const [customReason, setCustomReason] = useState('');
   const [moderationBusyId, setModerationBusyId] = useState('');
+  const [activeApproveRequest, setActiveApproveRequest] =
+    useState<FacultyRequest | null>(null);
+  const [approvalFirstName, setApprovalFirstName] = useState('');
+  const [approvalMiddleName, setApprovalMiddleName] = useState('');
+  const [approvalLastName, setApprovalLastName] = useState('');
+  const [approvalSchool, setApprovalSchool] = useState('');
+
 
   useEffect(() => {
     let active = true;
@@ -365,16 +372,62 @@ export const App = () => {
     }
   };
 
-  const approveRequest = async (request: FacultyRequest) => {
-    setModerationBusyId(request.id);
+  const openApprovalEditor = (request: FacultyRequest) => {
+    setActiveApproveRequest(request);
+    setApprovalFirstName(request.firstName);
+    setApprovalMiddleName(request.middleName ?? '');
+    setApprovalLastName(request.lastName);
+    setApprovalSchool(request.school);
+    setActiveRejectId('');
     setModeratorError('');
     setModeratorMessage('');
+  };
+
+  const cancelApprovalEditor = () => {
+    setActiveApproveRequest(null);
+    setApprovalFirstName('');
+    setApprovalMiddleName('');
+    setApprovalLastName('');
+    setApprovalSchool('');
+  };
+
+  const approveRequest = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+
+    if (!activeApproveRequest) {
+      return;
+    }
+
+    const request = activeApproveRequest;
+    setModeratorError('');
+    setModeratorMessage('');
+
+    if (!approvalFirstName.trim() || !approvalLastName.trim()) {
+      setModeratorError('First name and last name are required.');
+      return;
+    }
+
+    if (!approvalSchool) {
+      setModeratorError('Please select a school.');
+      return;
+    }
+
+    setModerationBusyId(request.id);
 
     try {
       const response = await fetch(
         `/api/mod/requests/${encodeURIComponent(request.id)}/approve`,
         {
           method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            firstName: approvalFirstName,
+            middleName: approvalMiddleName,
+            lastName: approvalLastName,
+            school: approvalSchool,
+          }),
         }
       );
 
@@ -388,8 +441,8 @@ export const App = () => {
         );
       }
 
+      cancelApprovalEditor();
       setModeratorMessage(result.message);
-      setActiveRejectId('');
       await loadModeratorRequests();
     } catch (err) {
       setModeratorError(
@@ -986,6 +1039,7 @@ export const App = () => {
                 {moderatorRequests.map((request) => {
                   const isBusy = moderationBusyId === request.id;
                   const isRejecting = activeRejectId === request.id;
+                  const isEditingApproval = activeApproveRequest?.id === request.id;
 
                   return (
                     <article
@@ -1027,10 +1081,10 @@ export const App = () => {
                             backgroundColor: '#23834c',
                             opacity: isBusy ? 0.6 : 1,
                           }}
-                          onClick={() => void approveRequest(request)}
-                          disabled={Boolean(moderationBusyId)}
+                          onClick={() => openApprovalEditor(request)}
+                          disabled={Boolean(moderationBusyId) || Boolean(activeApproveRequest)}
                         >
-                          {isBusy ? 'Processing...' : '✓ Approve'}
+                          ✓ Approve
                         </button>
 
                         <button
@@ -1053,6 +1107,104 @@ export const App = () => {
                           Reject
                         </button>
                       </div>
+
+                      {isEditingApproval && (
+                        <form
+                          onSubmit={approveRequest}
+                          style={{
+                            borderTop: '1px solid #444',
+                            paddingTop: '15px',
+                            display: 'grid',
+                            gap: '13px',
+                          }}
+                        >
+                          <div>
+                            <h4 style={{ margin: '0 0 6px' }}>Edit Faculty Details</h4>
+                            <p style={{ ...styles.muted, margin: 0 }}>
+                              Review and correct the submitted details before adding this faculty member.
+                            </p>
+                          </div>
+
+                          <div>
+                            <label style={styles.label} htmlFor={`approval-first-${request.id}`}>
+                              First Name *
+                            </label>
+                            <input
+                              id={`approval-first-${request.id}`}
+                              style={styles.input}
+                              value={approvalFirstName}
+                              onChange={(event) => setApprovalFirstName(event.target.value)}
+                              maxLength={60}
+                              required
+                            />
+                          </div>
+
+                          <div>
+                            <label style={styles.label} htmlFor={`approval-middle-${request.id}`}>
+                              Middle Name
+                            </label>
+                            <input
+                              id={`approval-middle-${request.id}`}
+                              style={styles.input}
+                              value={approvalMiddleName}
+                              onChange={(event) => setApprovalMiddleName(event.target.value)}
+                              maxLength={60}
+                            />
+                          </div>
+
+                          <div>
+                            <label style={styles.label} htmlFor={`approval-last-${request.id}`}>
+                              Last Name *
+                            </label>
+                            <input
+                              id={`approval-last-${request.id}`}
+                              style={styles.input}
+                              value={approvalLastName}
+                              onChange={(event) => setApprovalLastName(event.target.value)}
+                              maxLength={60}
+                              required
+                            />
+                          </div>
+
+                          <div>
+                            <label style={styles.label} htmlFor={`approval-school-${request.id}`}>
+                              School *
+                            </label>
+                            <select
+                              id={`approval-school-${request.id}`}
+                              style={styles.input}
+                              value={approvalSchool}
+                              onChange={(event) => setApprovalSchool(event.target.value)}
+                              required
+                            >
+                              <option value="">Select a school</option>
+                              {SCHOOLS.map((school) => (
+                                <option key={school} value={school}>
+                                  {school}
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+
+                          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px' }}>
+                            <button
+                              type="submit"
+                              style={{ ...styles.button, backgroundColor: '#23834c' }}
+                              disabled={Boolean(moderationBusyId)}
+                            >
+                              {isBusy ? 'Saving...' : 'Confirm & Approve'}
+                            </button>
+                            <button
+                              type="button"
+                              style={styles.secondaryButton}
+                              onClick={cancelApprovalEditor}
+                              disabled={Boolean(moderationBusyId)}
+                            >
+                              Cancel
+                            </button>
+                          </div>
+                        </form>
+                      )}
 
                       {isRejecting && (
                         <div
