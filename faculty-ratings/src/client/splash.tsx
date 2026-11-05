@@ -743,46 +743,74 @@ export const App = () => {
                   </p>
 
                   {faculty.map((record) => (
-                    <button
+                    <div
                       key={record.id}
                       style={{
                         ...styles.card,
-                        cursor: 'pointer',
-                      }}
-                      onClick={() => {
-                        setSelectedFaculty(record);
-                        setCurrentView('faculty-detail');
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        gap: '12px',
                       }}
                     >
-                      <div
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSelectedFaculty(record);
+                          setRatingMode('check');
+                          setCurrentView('faculty-detail');
+                        }}
                         style={{
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'space-between',
-                          gap: '12px',
+                          flex: 1,
+                          minWidth: 0,
+                          padding: 0,
+                          border: 'none',
+                          background: 'transparent',
+                          color: 'inherit',
+                          textAlign: 'left',
+                          cursor: 'pointer',
                         }}
                       >
-                        <div>
-                          <strong style={{ fontSize: '1.05rem' }}>
-                            {getFullName(record)}
-                          </strong>
+                        <strong style={{ fontSize: '1.05rem' }}>
+                          {getFullName(record)}
+                        </strong>
+                        <p style={{ ...styles.muted, marginBottom: 0, marginTop: '7px' }}>
+                          School: {record.school}
+                        </p>
+                        <p style={{ ...styles.muted, marginBottom: 0, marginTop: '5px' }}>
+                          {record.ratingCount ?? 0} {record.ratingCount === 1 ? 'rating' : 'ratings'}
+                        </p>
+                      </button>
 
-                          <p
-                            style={{
-                              ...styles.muted,
-                              marginBottom: 0,
-                              marginTop: '7px',
-                            }}
-                          >
-                            School: {record.school}
-                          </p>
-                        </div>
-
-                        <span style={{ color: '#38aaff', fontSize: '1.3rem' }}>
-                          →
-                        </span>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <button
+                          type="button"
+                          disabled={Boolean(record.hasRated)}
+                          onClick={() => {
+                            if (record.hasRated) return;
+                            setSelectedFaculty(record);
+                            setRatingMode('rate');
+                            setCurrentView('faculty-detail');
+                          }}
+                          style={{
+                            padding: '7px 13px',
+                            borderRadius: '7px',
+                            border: '1px solid',
+                            borderColor: record.hasRated ? '#555' : '#0079D3',
+                            backgroundColor: record.hasRated ? '#3a3a3a' : '#0079D3',
+                            color: record.hasRated ? '#999' : '#fff',
+                            fontSize: '0.85rem',
+                            fontWeight: 700,
+                            cursor: record.hasRated ? 'not-allowed' : 'pointer',
+                            opacity: record.hasRated ? 0.7 : 1,
+                            whiteSpace: 'nowrap',
+                          }}
+                        >
+                          {record.hasRated ? 'Rated' : 'Rate'}
+                        </button>
+                        <span style={{ color: '#38aaff', fontSize: '1.3rem' }}>→</span>
                       </div>
-                    </button>
+                    </div>
                   ))}
                 </div>
               )}
