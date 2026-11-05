@@ -58,25 +58,6 @@ const getFullName = (record: {
     .filter(Boolean)
     .join(' ');
 
-const isDuplicateFaculty = (
-  records: Record<string, string>,
-  request: FacultyRequest
-) => {
-  return Object.values(records).some((value) => {
-    try {
-      const record = JSON.parse(value) as FacultyRecord;
-
-      return (
-        record.school === request.school &&
-        normalizeName(getFullName(record)) ===
-          normalizeName(getFullName(request))
-      );
-    } catch {
-      return false;
-    }
-  });
-};
-
 const getModerator = async () => {
   try {
     const user = await reddit.getCurrentUser();
