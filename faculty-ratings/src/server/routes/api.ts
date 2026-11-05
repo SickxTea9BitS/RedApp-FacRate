@@ -199,6 +199,7 @@ api.post('/requests', async (c) => {
       middleName?: unknown;
       lastName?: unknown;
       school?: unknown;
+      courseCodes?: unknown;
     }>();
 
     const firstName =
@@ -209,6 +210,20 @@ api.post('/requests', async (c) => {
       typeof body.lastName === 'string' ? body.lastName.trim() : '';
     const school =
       typeof body.school === 'string' ? body.school.trim().toUpperCase() : '';
+
+    const requestedCourseCodes = Array.isArray(body.courseCodes)
+      ? body.courseCodes.filter((code): code is string => typeof code === 'string')
+      : [];
+
+    if (requestedCourseCodes.length > 20 || new Set(requestedCourseCodes).size !== requestedCourseCodes.length) {
+      return c.json<ApiErrorResponse>({ status: 'error', message: 'Select no more than 20 unique courses.' }, 400);
+    }
+
+    const approvedCourses = await redis.hGetAll(COURSES_HASH_KEY);
+    const invalidCourse = requestedCourseCodes.find((code) => !approvedCourses[code]);
+    if (invalidCourse) {
+      return c.json<ApiErrorResponse>({ status: 'error', message: `${invalidCourse} is not an approved course. Refresh the course list and try again.` }, 400);
+    }
 
     if (!firstName || !lastName) {
       return c.json<ApiErrorResponse>(
@@ -305,10 +320,12 @@ api.post('/requests', async (c) => {
       middleName,
       lastName,
       school,
+      courseCodes: (request.courseCodes ?? []).filter((code) => Boolean(approvedCoursesForApproval[code])),
       createdAt: Date.now(),
       submittedByUsername: username,
       submittedByUserId: userId,
       status: 'pending',
+      courseCodes: requestedCourseCodes,
     };
 
     await redis.hSet(REQUESTS_HASH_KEY, {
@@ -645,6 +662,8 @@ api.post('/mod/requests/:id/approve', async (c) => {
         409
       );
     }
+
+    const approvedCoursesForApproval = await redis.hGetAll(COURSES_HASH_KEY);
 
     const approvedRecord: FacultyRecord = {
       id: request.id,
