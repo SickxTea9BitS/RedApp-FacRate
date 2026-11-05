@@ -76,6 +76,7 @@ const Preview = () => {
             maxWidth: '90%',
             height: '145px',
             objectFit: 'contain',
+            filter: 'brightness(0) invert(1)',
           }}
         />
         <h1 style={{ fontSize: '1.4rem', lineHeight: 1.3, margin: 0 }}>
