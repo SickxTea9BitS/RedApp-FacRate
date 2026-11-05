@@ -660,10 +660,22 @@ api.post('/faculty/:id/course-requests', async (c) => {
     const approvedCourses = await redis.hGetAll(COURSES_HASH_KEY);
     for (const code of courseCodes) if (!Object.prototype.hasOwnProperty.call(approvedCourses, code)) return c.json<ApiErrorResponse>({ status: 'error', message: code + ' is not an approved course.' }, 400);
     const pending = await redis.hGetAll(FACULTY_COURSE_TAG_REQUESTS_HASH_KEY);
-    const duplicate = Object.values(pending).some((value) => {
-      try { const request = JSON.parse(value) as FacultyCourseTagRequest; return request.facultyId === facultyId && request.submittedByUsername === username && request.courseCodes.some((code) => courseCodes.includes(code)); } catch { return false; }
+    const pendingMatches = Object.values(pending).flatMap((value) => {
+      try {
+        const request = JSON.parse(value) as FacultyCourseTagRequest;
+        if (request.facultyId !== facultyId || request.submittedByUsername !== username) return [];
+        return request.courseCodes.filter((code) => courseCodes.includes(code));
+      } catch {
+        return [];
+      }
     });
-    if (duplicate) return c.json<ApiErrorResponse>({ status: 'error', message: 'You already have a pending course request for this faculty member.' }, 409);
+    const alreadyPending = Array.from(new Set(pendingMatches));
+    if (alreadyPending.length > 0) {
+      return c.json({
+        status: 'success' as const,
+        message: `Already awaiting moderator review: ${alreadyPending.join(', ')}. No duplicate request was created.`,
+      });
+    }
     const id = randomUUID();
     const request: FacultyCourseTagRequest = { id, facultyId, facultyName: getFullName(facultyRecord), courseCodes, createdAt: Date.now(), submittedByUsername: username };
     await redis.hSet(FACULTY_COURSE_TAG_REQUESTS_HASH_KEY, { [id]: JSON.stringify(request) });
