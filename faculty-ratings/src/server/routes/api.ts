@@ -11,6 +11,11 @@ import type {
   IncrementResponse,
   InitResponse,
   ModerationActionResponse,
+  CourseRecord,
+  CourseRequest,
+  CourseListResponse,
+  CourseRequestSubmissionResponse,
+  ModeratorCourseRequestsResponse,
   ModeratorRequestsResponse,
   ModeratorStatusResponse,
 } from '../../shared/api';
@@ -19,6 +24,9 @@ export const api = new Hono();
 
 const FACULTY_HASH_KEY = 'faculty:records';
 const REQUESTS_HASH_KEY = 'faculty:requests';
+const COURSES_HASH_KEY = 'courses:records';
+const COURSE_REQUESTS_HASH_KEY = 'courses:requests';
+const COURSE_CODE_PATTERN = /^[A-Z]{3}[0-9]{4}$/;
 
 const VALID_SCHOOLS = [
   'SASL',
@@ -322,6 +330,175 @@ api.post('/requests', async (c) => {
       },
       500
     );
+  }
+});
+
+
+api.get('/courses', async (c) => {
+  try {
+    const search = (c.req.query('search') ?? '').trim().toUpperCase();
+    const stored = await redis.hGetAll(COURSES_HASH_KEY);
+    const courses = Object.entries(stored)
+      .flatMap(([id, value]) => {
+        try {
+          const course = JSON.parse(value) as CourseRecord;
+          if (!course || typeof course.code !== 'string' || !COURSE_CODE_PATTERN.test(course.code)) return [];
+          return [{ ...course, id }];
+        } catch {
+          return [];
+        }
+      })
+      .filter((course) => !search || course.code.includes(search))
+      .sort((a, b) => a.code.localeCompare(b.code));
+
+    return c.json<CourseListResponse>({ status: 'success', courses, total: courses.length });
+  } catch (error) {
+    console.error('Course list error:', error);
+    return c.json<ApiErrorResponse>({ status: 'error', message: 'Unable to load courses.' }, 500);
+  }
+});
+
+api.post('/course-requests', async (c) => {
+  try {
+    const userId = context.userId;
+    const username = await reddit.getCurrentUsername();
+    if (!userId || !username) {
+      return c.json<ApiErrorResponse>({ status: 'error', message: 'You must be logged in to request a course.' }, 401);
+    }
+
+    const body = await c.req.json<{ code?: unknown }>();
+    const code = typeof body.code === 'string' ? body.code.trim().toUpperCase() : '';
+    if (!COURSE_CODE_PATTERN.test(code)) {
+      return c.json<ApiErrorResponse>({ status: 'error', message: 'Course code must contain exactly three letters followed by four digits (for example, MAT1001).' }, 400);
+    }
+
+    const [courses, requests] = await Promise.all([
+      redis.hGetAll(COURSES_HASH_KEY),
+      redis.hGetAll(COURSE_REQUESTS_HASH_KEY),
+    ]);
+
+    if (Object.values(courses).some((value) => {
+      try { return (JSON.parse(value) as CourseRecord).code === code; } catch { return false; }
+    })) {
+      return c.json<ApiErrorResponse>({ status: 'error', message: 'This course already exists.' }, 409);
+    }
+
+    if (Object.values(requests).some((value) => {
+      try {
+        const request = JSON.parse(value) as CourseRequest;
+        return request.code === code && request.status === 'pending';
+      } catch { return false; }
+    })) {
+      return c.json<ApiErrorResponse>({ status: 'error', message: 'A request for this course is already pending.' }, 409);
+    }
+
+    const requestId = randomUUID();
+    const request: CourseRequest = {
+      id: requestId,
+      code,
+      createdAt: Date.now(),
+      submittedByUsername: username,
+      submittedByUserId: userId,
+      status: 'pending',
+    };
+    await redis.hSet(COURSE_REQUESTS_HASH_KEY, { [requestId]: JSON.stringify(request) });
+
+    return c.json<CourseRequestSubmissionResponse>({
+      status: 'success',
+      message: 'Your course request has been submitted for moderator review.',
+      requestId,
+    });
+  } catch (error) {
+    console.error('Course request submission error:', error);
+    return c.json<ApiErrorResponse>({ status: 'error', message: 'Unable to submit the course request.' }, 500);
+  }
+});
+
+api.get('/mod/course-requests', async (c) => {
+  try {
+    if (!(await getModerator())) {
+      return c.json<ApiErrorResponse>({ status: 'error', message: 'Moderator permissions are required.' }, 403);
+    }
+    const stored = await redis.hGetAll(COURSE_REQUESTS_HASH_KEY);
+    const requests = Object.values(stored)
+      .flatMap((value) => {
+        try {
+          const request = JSON.parse(value) as CourseRequest;
+          return request && request.status === 'pending' && typeof request.code === 'string' ? [request] : [];
+        } catch { return []; }
+      })
+      .sort((a, b) => a.createdAt - b.createdAt);
+    return c.json<ModeratorCourseRequestsResponse>({ status: 'success', requests, total: requests.length });
+  } catch (error) {
+    console.error('Moderator course requests error:', error);
+    return c.json<ApiErrorResponse>({ status: 'error', message: 'Unable to load course requests.' }, 500);
+  }
+});
+
+api.post('/mod/course-requests/:id/approve', async (c) => {
+  try {
+    const moderator = await getModerator();
+    if (!moderator) return c.json<ApiErrorResponse>({ status: 'error', message: 'Moderator permissions are required.' }, 403);
+    const requestId = c.req.param('id');
+    const storedRequest = await redis.hGet(COURSE_REQUESTS_HASH_KEY, requestId);
+    if (!storedRequest) return c.json<ApiErrorResponse>({ status: 'error', message: 'Course request not found.' }, 404);
+
+    const request = JSON.parse(storedRequest) as CourseRequest;
+    if (request.status !== 'pending') return c.json<ApiErrorResponse>({ status: 'error', message: 'This request has already been reviewed.' }, 409);
+    if (!COURSE_CODE_PATTERN.test(request.code)) return c.json<ApiErrorResponse>({ status: 'error', message: 'The stored course code is invalid.' }, 400);
+
+    const existing = await redis.hGet(COURSES_HASH_KEY, request.code);
+    if (existing) return c.json<ApiErrorResponse>({ status: 'error', message: 'This course code already exists.' }, 409);
+
+    const now = Date.now();
+    const course: CourseRecord = {
+      id: request.code,
+      code: request.code,
+      createdAt: now,
+      createdByUsername: request.submittedByUsername,
+      approvedAt: now,
+      approvedByUsername: moderator.username,
+    };
+    const updated: CourseRequest = { ...request, status: 'approved', reviewedAt: now, reviewedByUsername: moderator.username };
+    await redis.hSet(COURSES_HASH_KEY, { [request.code]: JSON.stringify(course) });
+    await redis.hSet(COURSE_REQUESTS_HASH_KEY, { [requestId]: JSON.stringify(updated) });
+    return c.json<ModerationActionResponse>({ status: 'success', message: `${request.code} has been added to the course directory.` });
+  } catch (error) {
+    console.error('Course approval error:', error);
+    return c.json<ApiErrorResponse>({ status: 'error', message: 'Unable to approve this course request.' }, 500);
+  }
+});
+
+api.post('/mod/course-requests/:id/reject', async (c) => {
+  try {
+    const moderator = await getModerator();
+    if (!moderator) return c.json<ApiErrorResponse>({ status: 'error', message: 'Moderator permissions are required.' }, 403);
+    const requestId = c.req.param('id');
+    const storedRequest = await redis.hGet(COURSE_REQUESTS_HASH_KEY, requestId);
+    if (!storedRequest) return c.json<ApiErrorResponse>({ status: 'error', message: 'Course request not found.' }, 404);
+    const request = JSON.parse(storedRequest) as CourseRequest;
+    if (request.status !== 'pending') return c.json<ApiErrorResponse>({ status: 'error', message: 'This request has already been reviewed.' }, 409);
+
+    const body = await c.req.json<{ reason?: unknown; customReason?: unknown }>();
+    const reason = typeof body.reason === 'string' ? body.reason.trim() : '';
+    const customReason = typeof body.customReason === 'string' ? body.customReason.trim() : '';
+    if (!REJECTION_REASONS.includes(reason)) return c.json<ApiErrorResponse>({ status: 'error', message: 'Select a valid rejection reason.' }, 400);
+    if (reason === 'Custom' && !customReason) return c.json<ApiErrorResponse>({ status: 'error', message: 'Enter a custom rejection reason.' }, 400);
+    if (customReason.length > 300) return c.json<ApiErrorResponse>({ status: 'error', message: 'The custom reason cannot exceed 300 characters.' }, 400);
+
+    const updated: CourseRequest = {
+      ...request,
+      status: 'rejected',
+      rejectionReason: reason,
+      customReason: reason === 'Custom' ? customReason : undefined,
+      reviewedAt: Date.now(),
+      reviewedByUsername: moderator.username,
+    };
+    await redis.hSet(COURSE_REQUESTS_HASH_KEY, { [requestId]: JSON.stringify(updated) });
+    return c.json<ModerationActionResponse>({ status: 'success', message: `${request.code} request rejected.` });
+  } catch (error) {
+    console.error('Course rejection error:', error);
+    return c.json<ApiErrorResponse>({ status: 'error', message: 'Unable to reject this course request.' }, 500);
   }
 });
 
