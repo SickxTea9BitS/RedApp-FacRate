@@ -1678,7 +1678,7 @@ export const App = () => {
                 </button>
                 <button type="button" style={{ ...styles.card, cursor: 'pointer', textAlign: 'left', padding: '20px' }} onClick={() => setAdminSection('course-requests')}>
                   <strong style={{ fontSize: '1.1rem' }}>Pending Course Requests</strong>
-                  <span style={{ ...styles.muted, marginTop: '7px' }}>{moderatorCourseRequests.length ? `${moderatorCourseRequests.length} pending request(s)` : 'No pending requests'}</span>
+                  <span style={{ ...styles.muted, marginTop: '7px' }}>{moderatorCourseRequests.length + moderatorFacultyCourseRequests.length ? `${moderatorCourseRequests.length + moderatorFacultyCourseRequests.length} pending request(s)` : 'No pending requests'}</span>
                   <span style={{ color: '#38aaff', marginTop: '10px' }}>Open requests →</span>
                 </button>
                 <button type="button" style={{ ...styles.card, cursor: 'pointer', textAlign: 'left', padding: '20px' }} onClick={() => setAdminSection('faculties')}>
