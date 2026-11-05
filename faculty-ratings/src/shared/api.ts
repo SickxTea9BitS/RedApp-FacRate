@@ -85,3 +85,28 @@ export type DecrementResponse = {
   postId: string;
   count: number;
 };
+
+export type FacultyRatingValues = {
+  teaching: number;
+  internalMarking: number;
+  examEvaluation: number;
+  overallRecommendation: number;
+};
+
+export type FacultyRatingSummary = {
+  status: 'success';
+  count: number;
+  averages: FacultyRatingValues;
+  eligibility: {
+    loggedIn: boolean;
+    eligible: boolean;
+    accountAgeDays: number | null;
+    totalKarma: number | null;
+    hasRated: boolean;
+    reason: string;
+  };
+};
+
+export type FacultyRatingSubmissionResponse =
+  | { status: 'success'; message: string }
+  | ApiErrorResponse;
