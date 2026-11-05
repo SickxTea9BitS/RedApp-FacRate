@@ -893,7 +893,7 @@ export const App = () => {
       <main className="app-container" style={styles.container}>
         {currentView === 'home' && (
           <section className="app-hero" style={{ textAlign: 'center', paddingTop: '8vh' }}>
-            <div className="app-eyebrow">VIT BHOPAL <span>•</span> STUDENT COMMUNITY</div>
+            <div className="app-eyebrow">VIT BHOPAL <span>•</span> REDDIT COMMUNITY</div>
             <img
               src="/vit-bhopal-logo.png"
               alt="VIT Bhopal University"
@@ -908,7 +908,7 @@ export const App = () => {
               }}
             />
 
-            <h1 style={styles.title}>Faculty Rating Portal</h1>
+            <h1 className="app-display-title" style={styles.title}>Faculty Rating Portal</h1>
 
             <p style={styles.subtitle}>
               Find faculty members and explore student ratings.
