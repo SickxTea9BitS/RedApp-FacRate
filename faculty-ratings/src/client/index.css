@@ -181,3 +181,251 @@ textarea:focus {
     padding: 16px 12px;
   }
 }
+
+
+:root {
+  color-scheme: dark;
+  --app-bg: #2b3258;
+  --app-surface: #343d68;
+  --app-surface-raised: #3b4777;
+  --app-border: #596795;
+  --app-text: #f7f8ff;
+  --app-muted: #c6cde2;
+  --app-accent: #8bb8ff;
+  --app-accent-soft: #b4d0ff;
+}
+
+.app-page {
+  background:
+    radial-gradient(ellipse at 12% 0%, #53649b55 0%, transparent 38%),
+    radial-gradient(ellipse at 100% 38%, #45558b44 0%, transparent 34%),
+    linear-gradient(145deg, #252d50 0%, #2b3258 52%, #222a4b 100%) !important;
+}
+
+.app-container {
+  max-width: 860px !important;
+}
+
+.app-hero {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  padding: clamp(36px, 7vw, 72px) clamp(20px, 5vw, 52px) !important;
+  border: 1px solid #8194c755;
+  border-radius: 28px;
+  background:
+    radial-gradient(circle at 50% 0%, #718acb35, transparent 52%),
+    linear-gradient(145deg, #3b4777 0%, #303a66 55%, #283153 100%);
+  box-shadow: 0 24px 70px #10172e55, inset 0 1px 0 #ffffff14;
+}
+
+.app-hero::before {
+  position: absolute;
+  z-index: -1;
+  top: -115px;
+  right: -95px;
+  width: 280px;
+  height: 280px;
+  border: 1px solid #b4d0ff20;
+  border-radius: 50%;
+  box-shadow: 0 0 0 28px #b4d0ff08, 0 0 0 58px #b4d0ff06;
+  content: "";
+}
+
+.app-eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  margin: 0 auto 24px;
+  padding: 8px 13px;
+  border: 1px solid #b4d0ff40;
+  border-radius: 999px;
+  background: #202a4b88;
+  color: #dce7ff;
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+}
+
+.app-eyebrow span {
+  color: #8bb8ff;
+}
+
+.app-hero img {
+  filter: brightness(0) invert(1) drop-shadow(0 8px 18px #11182d66) !important;
+  margin-bottom: 28px !important;
+}
+
+.app-hero h1,
+.app-screen h1 {
+  color: #ffffff;
+  letter-spacing: -0.045em;
+}
+
+.app-hero h1 {
+  font-size: clamp(2.1rem, 5vw, 3.1rem) !important;
+  font-weight: 800;
+}
+
+.app-hero > p {
+  max-width: 540px;
+  margin-right: auto;
+  margin-left: auto;
+}
+
+.app-screen {
+  animation: app-screen-enter 240ms ease-out both;
+}
+
+@keyframes app-screen-enter {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.app-screen > h1 {
+  margin-top: 4px;
+}
+
+.app-screen > h2,
+.app-screen h3 {
+  letter-spacing: -0.02em;
+}
+
+.app-screen .faculty-card {
+  position: relative;
+  overflow: hidden;
+  min-height: 126px;
+  padding: 20px !important;
+  border: 1px solid #7183b866 !important;
+  border-radius: 18px !important;
+  background: linear-gradient(135deg, #3a4777 0%, #303a64 100%) !important;
+  box-shadow: 0 10px 26px #151d3a44, inset 0 1px 0 #ffffff0b;
+  transition: transform 180ms ease, border-color 180ms ease, box-shadow 180ms ease;
+}
+
+.app-screen .faculty-card:hover {
+  transform: translateY(-2px);
+  border-color: #9bbcff !important;
+  box-shadow: 0 16px 32px #151d3a66, inset 0 1px 0 #ffffff12;
+}
+
+.app-screen article {
+  border-radius: 17px !important;
+  box-shadow: 0 8px 22px #151d3a30, inset 0 1px 0 #ffffff08;
+}
+
+.app-screen button {
+  border-radius: 12px !important;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  transition: transform 160ms ease, filter 160ms ease, box-shadow 160ms ease;
+}
+
+.app-screen button:not(:disabled):hover {
+  filter: brightness(1.1);
+  box-shadow: 0 7px 18px #11182d35;
+}
+
+.app-screen button:not(:disabled):active {
+  transform: translateY(1px) scale(0.99);
+}
+
+.app-screen input,
+.app-screen select,
+.app-screen textarea {
+  min-height: 48px;
+  border-radius: 13px !important;
+  background-color: #242d50 !important;
+}
+
+.app-screen textarea {
+  min-height: 108px;
+}
+
+.app-screen input::placeholder,
+.app-screen textarea::placeholder {
+  color: #aebbdc;
+  opacity: 0.85;
+}
+
+.app-screen input:focus,
+.app-screen select:focus,
+.app-screen textarea:focus {
+  border-color: #a9c8ff !important;
+  box-shadow: 0 0 0 4px #a9c8ff24 !important;
+}
+
+.app-screen-directory > div[style*="display: grid"] {
+  gap: 16px !important;
+}
+
+.app-screen-directory .faculty-card strong {
+  font-size: 1.12rem !important;
+  letter-spacing: -0.02em;
+}
+
+.app-screen-directory .faculty-card span {
+  border-radius: 999px !important;
+}
+
+.app-screen-detail > div[style*="background-color"],
+.app-screen-detail > div[style*="backgroundColor"] {
+  border-radius: 18px;
+}
+
+.app-screen-admin article,
+.app-screen-admin button[style*="cursor: pointer"] {
+  border-radius: 16px !important;
+}
+
+.app-screen-admin h2 {
+  font-size: 1.35rem;
+}
+
+.app-screen-form form {
+  display: grid;
+  gap: 15px;
+}
+
+.app-screen-form label {
+  margin-bottom: 2px;
+  color: #e8efff;
+  font-weight: 700;
+}
+
+.app-screen-form button,
+.app-screen-admin button {
+  min-height: 44px;
+}
+
+.app-screen [role="alert"] {
+  border-radius: 12px;
+}
+
+.app-screen [role="status"] {
+  border-radius: 12px;
+}
+
+@media (max-width: 600px) {
+  .app-page {
+    padding: 16px 12px !important;
+  }
+
+  .app-hero {
+    padding: 38px 18px !important;
+    border-radius: 22px;
+  }
+
+  .app-screen .faculty-card {
+    padding: 16px !important;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .app-screen,
+  .app-screen *,
+  .app-hero * {
+    animation: none !important;
+    transition: none !important;
+  }
+}
