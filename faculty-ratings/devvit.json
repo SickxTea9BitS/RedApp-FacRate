@@ -38,7 +38,7 @@
         "description": "Show a simple form",
         "location": "subreddit",
         "forUserType": "moderator",
-        "endpoint": "/internal/form/example-submit"
+        "endpoint": "/internal/menu/example-form"
       }
     ]
   },
