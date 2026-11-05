@@ -171,6 +171,8 @@ export const App = () => {
   const [approvalMiddleName, setApprovalMiddleName] = useState('');
   const [approvalLastName, setApprovalLastName] = useState('');
   const [approvalSchool, setApprovalSchool] = useState('');
+  const [approvalCourseCodes, setApprovalCourseCodes] = useState<string[]>([]);
+  const [approvalCourseSearch, setApprovalCourseSearch] = useState('');
 
   const [ratingSummary, setRatingSummary] = useState<FacultyRatingSummary | null>(null);
   const [ratingValues, setRatingValues] = useState<FacultyRatingValues>({
@@ -589,6 +591,9 @@ export const App = () => {
     setApprovalMiddleName(request.middleName ?? '');
     setApprovalLastName(request.lastName);
     setApprovalSchool(request.school);
+    setApprovalCourseCodes(request.courseCodes ?? []);
+    setApprovalCourseSearch('');
+    void loadAvailableCourses();
     setActiveRejectId('');
     setModeratorError('');
     setModeratorMessage('');
@@ -600,6 +605,8 @@ export const App = () => {
     setApprovalMiddleName('');
     setApprovalLastName('');
     setApprovalSchool('');
+    setApprovalCourseCodes([]);
+    setApprovalCourseSearch('');
   };
 
   const approveRequest = async (event: FormEvent<HTMLFormElement>) => {
@@ -638,6 +645,7 @@ export const App = () => {
             middleName: approvalMiddleName,
             lastName: approvalLastName,
             school: approvalSchool,
+            courseCodes: approvalCourseCodes,
           }),
         }
       );
@@ -801,6 +809,13 @@ export const App = () => {
             <p style={styles.subtitle}>
               Search for a faculty member or filter by school.
             </p>
+            <button
+              type="button"
+              style={{ ...styles.button, marginBottom: '18px' }}
+              onClick={openRequestForm}
+            >
+              + Request a Faculty
+            </button>
 
             <div style={{ display: 'grid', gap: '14px' }}>
               <input
@@ -1576,6 +1591,18 @@ export const App = () => {
                         <p style={{ ...styles.muted, margin: '4px 0' }}>
                           School: <strong>{request.school}</strong>
                         </p>
+                        <div style={{ marginTop: '9px' }}>
+                          <p style={{ ...styles.muted, margin: '4px 0' }}>Requested courses:</p>
+                          {(request.courseCodes ?? []).length > 0 ? (
+                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                              {request.courseCodes!.map((code) => (
+                                <span key={code} style={{ background: '#173d5a', border: '1px solid #287bb3', color: '#d6edff', borderRadius: '14px', padding: '4px 9px', fontSize: '0.85rem' }}>{code}</span>
+                              ))}
+                            </div>
+                          ) : (
+                            <span style={{ ...styles.muted, fontSize: '0.9rem' }}>No courses selected</span>
+                          )}
+                        </div>
 
                         <p style={{ ...styles.muted, margin: '4px 0' }}>
                           Submitted by: u/{request.submittedByUsername}
@@ -1702,6 +1729,49 @@ export const App = () => {
                                 </option>
                               ))}
                             </select>
+                          </div>
+
+
+                          <div style={{ display: 'grid', gap: '9px' }}>
+                            <label style={styles.label}>Courses (Optional)</label>
+                            <input
+                              style={styles.input}
+                              value={approvalCourseSearch}
+                              onChange={(event) => setApprovalCourseSearch(event.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 7))}
+                              placeholder="Search approved course codes..."
+                              maxLength={7}
+                            />
+                            {approvalCourseCodes.length > 0 && (
+                              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '7px' }}>
+                                {approvalCourseCodes.map((code) => (
+                                  <span key={code} style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', background: '#173d5a', border: '1px solid #287bb3', borderRadius: '16px', padding: '5px 9px' }}>
+                                    {code}
+                                    <button type="button" onClick={() => setApprovalCourseCodes((current) => current.filter((item) => item !== code))} style={{ border: 0, background: 'transparent', color: '#fff', cursor: 'pointer', padding: 0 }} aria-label={`Remove ${code}`}>×</button>
+                                  </span>
+                                ))}
+                              </div>
+                            )}
+                            {courseOptionsLoading && <p style={styles.muted}>Loading approved courses...</p>}
+                            <div style={{ display: 'grid', gap: '7px' }}>
+                              {availableCourses
+                                .filter((course) => !approvalCourseCodes.includes(course.code))
+                                .filter((course) => !approvalCourseSearch || course.code.includes(approvalCourseSearch))
+                                .slice(0, 10)
+                                .map((course) => (
+                                  <button
+                                    key={course.code}
+                                    type="button"
+                                    style={{ ...styles.secondaryButton, textAlign: 'left', padding: '8px 11px' }}
+                                    onClick={() => setApprovalCourseCodes((current) => [...current, course.code])}
+                                  >
+                                    + {course.code}
+                                  </button>
+                                ))}
+                              {!courseOptionsLoading && approvalCourseSearch && !availableCourses.some((course) => course.code.includes(approvalCourseSearch)) && (
+                                <p style={styles.muted}>No approved course matches this search.</p>
+                              )}
+                            </div>
+                            <p style={{ ...styles.muted, margin: 0 }}>Review, add or remove course tags before approving this faculty request.</p>
                           </div>
 
                           <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px' }}>
