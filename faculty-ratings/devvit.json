@@ -1,4 +1,3 @@
-
 {
   "$schema": "https://developers.reddit.com/schema/config-file.v1.json",
   "name": "faculty-ratings",
@@ -11,10 +10,13 @@
     "entrypoints": {
       "default": {
         "inline": true,
-        "entry": "splash.html"
+        "entry": "preview.html"
       },
       "game": {
         "entry": "game.html"
+      },
+      "expanded": {
+        "entry": "splash.html"
       }
     }
   },
