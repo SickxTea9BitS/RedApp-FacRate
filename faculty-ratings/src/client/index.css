@@ -260,7 +260,10 @@ textarea:focus {
 .app-hero h1,
 .app-screen h1 {
   color: #ffffff;
-  letter-spacing: -0.045em;
+  font-family: 'Redaction 10', Georgia, serif !important;
+  font-weight: 400 !important;
+  letter-spacing: -0.02em;
+  line-height: 1.12;
 }
 
 .app-hero h1 {
