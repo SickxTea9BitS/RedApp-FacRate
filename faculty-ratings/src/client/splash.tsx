@@ -133,6 +133,7 @@ export const App = () => {
   const [ratingMode, setRatingMode] = useState<RatingMode>('rate');
   const [search, setSearch] = useState('');
   const [selectedSchool, setSelectedSchool] = useState('');
+  const [selectedCourse, setSelectedCourse] = useState('');
   const [faculty, setFaculty] = useState<FacultyRecord[]>([]);
   const [selectedFaculty, setSelectedFaculty] =
     useState<FacultyRecord | null>(null);
@@ -173,6 +174,19 @@ export const App = () => {
   const [approvalSchool, setApprovalSchool] = useState('');
   const [approvalCourseCodes, setApprovalCourseCodes] = useState<string[]>([]);
   const [approvalCourseSearch, setApprovalCourseSearch] = useState('');
+
+  const [allFacultyForModeration, setAllFacultyForModeration] = useState<FacultyRecord[]>([]);
+  const [facultyManagementLoading, setFacultyManagementLoading] = useState(false);
+  const [facultyManagementError, setFacultyManagementError] = useState('');
+  const [editingFacultyId, setEditingFacultyId] = useState('');
+  const [editFirstName, setEditFirstName] = useState('');
+  const [editMiddleName, setEditMiddleName] = useState('');
+  const [editLastName, setEditLastName] = useState('');
+  const [editSchool, setEditSchool] = useState('');
+  const [editCourseCodes, setEditCourseCodes] = useState<string[]>([]);
+  const [editCourseSearch, setEditCourseSearch] = useState('');
+  const [facultyEditBusy, setFacultyEditBusy] = useState(false);
+  const [facultyEditMessage, setFacultyEditMessage] = useState('');
 
   const [ratingSummary, setRatingSummary] = useState<FacultyRatingSummary | null>(null);
   const [ratingValues, setRatingValues] = useState<FacultyRatingValues>({
@@ -258,6 +272,9 @@ export const App = () => {
         if (selectedSchool) {
           params.set('school', selectedSchool);
         }
+        if (selectedCourse) {
+          params.set('course', selectedCourse);
+        }
 
         const response = await fetch(`/api/faculty?${params.toString()}`);
 
@@ -294,7 +311,7 @@ export const App = () => {
     return () => {
       active = false;
     };
-  }, [currentView, search, selectedSchool]);
+  }, [currentView, search, selectedSchool, selectedCourse]);
 
 
   useEffect(() => {
@@ -363,6 +380,7 @@ export const App = () => {
     setRatingMode(mode);
     setSearch('');
     setSelectedSchool('');
+    setSelectedCourse('');
     setSelectedFaculty(null);
     setCurrentView('faculty');
   };
@@ -520,6 +538,68 @@ export const App = () => {
     }
   };
 
+
+  const loadAllFacultyForModeration = async () => {
+    setFacultyManagementLoading(true);
+    setFacultyManagementError('');
+    try {
+      const response = await fetch('/api/faculty');
+      const result = (await response.json()) as FacultyListResponse | ApiErrorResponse;
+      if (!response.ok || result.status !== 'success') {
+        throw new Error(result.status === 'error' ? result.message : 'Unable to load faculty.');
+      }
+      setAllFacultyForModeration(result.faculty);
+    } catch (error) {
+      setFacultyManagementError(error instanceof Error ? error.message : 'Unable to load faculty.');
+    } finally {
+      setFacultyManagementLoading(false);
+    }
+  };
+
+  const openFacultyEditor = (record: FacultyRecord) => {
+    setEditingFacultyId(record.id);
+    setEditFirstName(record.firstName);
+    setEditMiddleName(record.middleName ?? '');
+    setEditLastName(record.lastName);
+    setEditSchool(record.school);
+    setEditCourseCodes(record.courseCodes ?? []);
+    setEditCourseSearch('');
+    setFacultyEditMessage('');
+    void loadAvailableCourses();
+  };
+
+  const saveFacultyEdit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!editingFacultyId) return;
+    setFacultyEditBusy(true);
+    setFacultyEditMessage('');
+    setFacultyManagementError('');
+    try {
+      const response = await fetch(`/api/mod/faculty/${encodeURIComponent(editingFacultyId)}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          firstName: editFirstName,
+          middleName: editMiddleName,
+          lastName: editLastName,
+          school: editSchool,
+          courseCodes: editCourseCodes,
+        }),
+      });
+      const result = (await response.json()) as ModerationActionResponse;
+      if (!response.ok || result.status !== 'success') {
+        throw new Error(result.status === 'error' ? result.message : 'Unable to update faculty.');
+      }
+      setFacultyEditMessage(result.message);
+      setEditingFacultyId('');
+      await loadAllFacultyForModeration();
+    } catch (error) {
+      setFacultyManagementError(error instanceof Error ? error.message : 'Unable to update faculty.');
+    } finally {
+      setFacultyEditBusy(false);
+    }
+  };
+
   const openAdminDashboard = () => {
     setCurrentView('admin');
     setActiveRejectId('');
@@ -527,6 +607,7 @@ export const App = () => {
     setCustomReason('');
     void loadModeratorRequests();
     void loadModeratorCourseRequests();
+    void loadAllFacultyForModeration();
   };
 
   const submitFacultyRequest = async (event: FormEvent<HTMLFormElement>) => {
@@ -838,6 +919,16 @@ export const App = () => {
                   </option>
                 ))}
               </select>
+              <select
+                value={selectedCourse}
+                onChange={(event) => setSelectedCourse(event.target.value)}
+                style={styles.input}
+              >
+                <option value="">All Courses</option>
+                {availableCourses.map((course) => (
+                  <option key={course.code} value={course.code}>{course.code}</option>
+                ))}
+              </select>
             </div>
 
             <div style={{ marginTop: '26px' }}>
@@ -931,6 +1022,11 @@ export const App = () => {
                         <p style={{ ...styles.muted, marginBottom: 0, marginTop: '7px' }}>
                           School: {record.school}
                         </p>
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginTop: '8px' }}>
+                          {(record.courseCodes ?? []).length > 0 ? record.courseCodes!.map((code) => (
+                            <span key={code} style={{ background: '#173d5a', border: '1px solid #287bb3', color: '#d6edff', borderRadius: '12px', padding: '3px 8px', fontSize: '0.78rem' }}>{code}</span>
+                          )) : <span style={{ ...styles.muted, fontSize: '0.8rem' }}>No courses assigned</span>}
+                        </div>
                         <p style={{ ...styles.muted, marginBottom: 0, marginTop: '5px' }}>
                           {record.ratingCount ?? 0} {record.ratingCount === 1 ? 'rating' : 'ratings'}
                         </p>
@@ -1009,6 +1105,12 @@ export const App = () => {
 
             <h1 style={styles.title}>{getFullName(selectedFaculty)}</h1>
             <p style={styles.subtitle}>School: {selectedFaculty.school}</p>
+            <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '7px', margin: '0 0 18px' }}>
+              <strong style={{ fontSize: '0.9rem' }}>Courses:</strong>
+              {(selectedFaculty.courseCodes ?? []).length > 0 ? selectedFaculty.courseCodes!.map((code) => (
+                <span key={code} style={{ background: '#173d5a', border: '1px solid #287bb3', color: '#d6edff', borderRadius: '14px', padding: '5px 10px', fontSize: '0.85rem' }}>{code}</span>
+              )) : <span style={styles.muted}>No courses assigned</span>}
+            </div>
 
             {ratingLoading && <p style={styles.muted}>Loading ratings...</p>}
             {ratingError && (
@@ -1887,6 +1989,63 @@ export const App = () => {
               </div>
             )}
 
+
+            <div style={{ borderTop: '1px solid #444', marginTop: '30px', paddingTop: '24px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px', marginBottom: '16px' }}>
+                <h2 style={{ margin: 0 }}>Manage Faculty ({allFacultyForModeration.length})</h2>
+                <button type="button" style={{ ...styles.secondaryButton, padding: '8px 12px' }} onClick={() => void loadAllFacultyForModeration()} disabled={facultyManagementLoading}>
+                  {facultyManagementLoading ? 'Refreshing...' : 'Refresh'}
+                </button>
+              </div>
+              {facultyEditMessage && <p role="status" style={{ color: '#8de0ad' }}>{facultyEditMessage}</p>}
+              {facultyManagementError && <p role="alert" style={{ color: '#ffb3b3' }}>{facultyManagementError}</p>}
+              {facultyManagementLoading && <p style={styles.muted}>Loading faculty directory...</p>}
+              {!facultyManagementLoading && allFacultyForModeration.map((record) => (
+                <article key={record.id} style={{ ...styles.card, display: 'grid', gap: '10px', marginBottom: '10px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px' }}>
+                    <div>
+                      <strong>{getFullName(record)}</strong>
+                      <p style={{ ...styles.muted, margin: '4px 0' }}>School: {record.school}</p>
+                      <p style={{ ...styles.muted, margin: '4px 0' }}>Courses: {(record.courseCodes ?? []).join(', ') || 'None'}</p>
+                    </div>
+                    <button type="button" style={{ ...styles.secondaryButton, padding: '7px 12px' }} onClick={() => openFacultyEditor(record)}>Edit</button>
+                  </div>
+                  {editingFacultyId === record.id && (
+                    <form onSubmit={saveFacultyEdit} style={{ display: 'grid', gap: '10px', borderTop: '1px solid #444', paddingTop: '12px' }}>
+                      <label style={styles.label}>First Name *</label>
+                      <input style={styles.input} value={editFirstName} onChange={(event) => setEditFirstName(event.target.value)} maxLength={60} required />
+                      <label style={styles.label}>Middle Name</label>
+                      <input style={styles.input} value={editMiddleName} onChange={(event) => setEditMiddleName(event.target.value)} maxLength={60} />
+                      <label style={styles.label}>Last Name *</label>
+                      <input style={styles.input} value={editLastName} onChange={(event) => setEditLastName(event.target.value)} maxLength={60} required />
+                      <label style={styles.label}>School *</label>
+                      <select style={styles.input} value={editSchool} onChange={(event) => setEditSchool(event.target.value)} required>
+                        {SCHOOLS.map((school) => <option key={school} value={school}>{school}</option>)}
+                      </select>
+                      <label style={styles.label}>Assigned Courses</label>
+                      <input style={styles.input} value={editCourseSearch} onChange={(event) => setEditCourseSearch(event.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 7))} placeholder="Search approved course codes..." maxLength={7} />
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '7px' }}>
+                        {editCourseCodes.map((code) => (
+                          <span key={code} style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', background: '#173d5a', border: '1px solid #287bb3', borderRadius: '15px', padding: '5px 9px' }}>
+                            {code}
+                            <button type="button" onClick={() => setEditCourseCodes((current) => current.filter((item) => item !== code))} style={{ border: 0, background: 'transparent', color: '#fff', cursor: 'pointer' }}>×</button>
+                          </span>
+                        ))}
+                      </div>
+                      <div style={{ display: 'grid', gap: '6px' }}>
+                        {availableCourses.filter((course) => !editCourseCodes.includes(course.code)).filter((course) => !editCourseSearch || course.code.includes(editCourseSearch)).slice(0, 10).map((course) => (
+                          <button key={course.code} type="button" style={{ ...styles.secondaryButton, textAlign: 'left', padding: '7px 10px' }} onClick={() => setEditCourseCodes((current) => [...current, course.code])}>+ {course.code}</button>
+                        ))}
+                      </div>
+                      <div style={{ display: 'flex', gap: '9px', flexWrap: 'wrap' }}>
+                        <button type="submit" style={{ ...styles.button, backgroundColor: '#23834c' }} disabled={facultyEditBusy}>{facultyEditBusy ? 'Saving...' : 'Save Faculty Changes'}</button>
+                        <button type="button" style={styles.secondaryButton} onClick={() => setEditingFacultyId('')} disabled={facultyEditBusy}>Cancel</button>
+                      </div>
+                    </form>
+                  )}
+                </article>
+              ))}
+            </div>
             <div style={{ borderTop: '1px solid #444', marginTop: '30px', paddingTop: '24px' }}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', marginBottom: '16px' }}>
                 <h2 style={{ margin: 0 }}>Course Requests ({moderatorCourseRequests.length})</h2>
