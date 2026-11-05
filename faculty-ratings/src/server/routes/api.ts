@@ -644,6 +644,228 @@ api.post('/mod/requests/:id/reject', async (c) => {
   }
 });
 
+
+const RATINGS_KEY_PREFIX = 'faculty:ratings:';
+const MIN_ACCOUNT_AGE_DAYS = 30;
+const MIN_TOTAL_KARMA = 15;
+const RATING_FIELDS = [
+  'teaching',
+  'internalMarking',
+  'examEvaluation',
+  'overallRecommendation',
+] as const;
+
+type RatingValues = {
+  teaching: number;
+  internalMarking: number;
+  examEvaluation: number;
+  overallRecommendation: number;
+};
+
+const getRatingEligibility = async () => {
+  const user = await reddit.getCurrentUser();
+
+  if (!user) {
+    return {
+      user: undefined,
+      loggedIn: false,
+      eligible: false,
+      accountAgeDays: null,
+      totalKarma: null,
+      reason: 'Log in to Reddit to submit a rating.',
+    };
+  }
+
+  const accountAgeDays = Math.floor(
+    (Date.now() - user.createdAt.getTime()) / 86_400_000
+  );
+  const totalKarma = user.linkKarma + user.commentKarma;
+
+  if (accountAgeDays < MIN_ACCOUNT_AGE_DAYS) {
+    return {
+      user,
+      loggedIn: true,
+      eligible: false,
+      accountAgeDays,
+      totalKarma,
+      reason: 'Your Reddit account must be at least 30 days old.',
+    };
+  }
+
+  if (totalKarma < MIN_TOTAL_KARMA) {
+    return {
+      user,
+      loggedIn: true,
+      eligible: false,
+      accountAgeDays,
+      totalKarma,
+      reason: 'You need at least 15 total Reddit karma to submit a rating.',
+    };
+  }
+
+  return {
+    user,
+    loggedIn: true,
+    eligible: true,
+    accountAgeDays,
+    totalKarma,
+    reason: '',
+  };
+};
+
+const isValidRatingValues = (value: unknown): value is RatingValues => {
+  if (!value || typeof value !== 'object') return false;
+  const record = value as Record<string, unknown>;
+  return RATING_FIELDS.every(
+    (field) =>
+      typeof record[field] === 'number' &&
+      Number.isInteger(record[field]) &&
+      record[field] >= 0 &&
+      record[field] <= 100
+  );
+};
+
+api.get('/faculty/:id/ratings', async (c) => {
+  try {
+    const facultyId = c.req.param('id');
+    if (!facultyId || facultyId.length > 100) {
+      return c.json<ApiErrorResponse>(
+        { status: 'error', message: 'Invalid faculty ID.' },
+        400
+      );
+    }
+
+    const [storedRatings, eligibility] = await Promise.all([
+      redis.hGetAll(`${RATINGS_KEY_PREFIX}${facultyId}`),
+      getRatingEligibility(),
+    ]);
+
+    const ratings = Object.values(storedRatings).flatMap((value) => {
+      try {
+        const parsed = JSON.parse(value) as unknown;
+        return isValidRatingValues(parsed) ? [parsed] : [];
+      } catch {
+        return [];
+      }
+    });
+
+    const count = ratings.length;
+    const averages: RatingValues = {
+      teaching: 0,
+      internalMarking: 0,
+      examEvaluation: 0,
+      overallRecommendation: 0,
+    };
+
+    if (count > 0) {
+      for (const field of RATING_FIELDS) {
+        averages[field] = Math.round(
+          ratings.reduce((sum, rating) => sum + rating[field], 0) / count
+        );
+      }
+    }
+
+    const existingRating = eligibility.user
+      ? await redis.hGet(
+          `${RATINGS_KEY_PREFIX}${facultyId}`,
+          eligibility.user.id
+        )
+      : undefined;
+
+    return c.json({
+      status: 'success' as const,
+      count,
+      averages,
+      eligibility: {
+        loggedIn: eligibility.loggedIn,
+        eligible: eligibility.eligible,
+        accountAgeDays: eligibility.accountAgeDays,
+        totalKarma: eligibility.totalKarma,
+        hasRated: Boolean(existingRating),
+        reason: eligibility.reason,
+      },
+    });
+  } catch (error) {
+    console.error('Faculty rating summary error:', error);
+    return c.json<ApiErrorResponse>(
+      { status: 'error', message: 'Unable to load faculty ratings.' },
+      500
+    );
+  }
+});
+
+api.post('/faculty/:id/ratings', async (c) => {
+  try {
+    const facultyId = c.req.param('id');
+    if (!facultyId || facultyId.length > 100) {
+      return c.json<ApiErrorResponse>(
+        { status: 'error', message: 'Invalid faculty ID.' },
+        400
+      );
+    }
+
+    const facultyRecord = await redis.hGet(FACULTY_HASH_KEY, facultyId);
+    if (!facultyRecord) {
+      return c.json<ApiErrorResponse>(
+        { status: 'error', message: 'Faculty member not found.' },
+        404
+      );
+    }
+
+    const eligibility = await getRatingEligibility();
+    if (!eligibility.user) {
+      return c.json<ApiErrorResponse>(
+        { status: 'error', message: eligibility.reason },
+        401
+      );
+    }
+    if (!eligibility.eligible) {
+      return c.json<ApiErrorResponse>(
+        { status: 'error', message: eligibility.reason },
+        403
+      );
+    }
+
+    const body = await c.req.json<unknown>();
+    if (!isValidRatingValues(body)) {
+      return c.json<ApiErrorResponse>(
+        {
+          status: 'error',
+          message: 'All four ratings must be whole numbers from 0 to 100.',
+        },
+        400
+      );
+    }
+
+    const saved = await redis.hSetNX(
+      `${RATINGS_KEY_PREFIX}${facultyId}`,
+      eligibility.user.id,
+      JSON.stringify({ ...body, createdAt: Date.now() })
+    );
+
+    if (!saved) {
+      return c.json<ApiErrorResponse>(
+        {
+          status: 'error',
+          message: 'You have already submitted a rating for this faculty member.',
+        },
+        409
+      );
+    }
+
+    return c.json({
+      status: 'success' as const,
+      message: 'Your rating has been submitted successfully.',
+    });
+  } catch (error) {
+    console.error('Faculty rating submission error:', error);
+    return c.json<ApiErrorResponse>(
+      { status: 'error', message: 'Unable to submit your rating.' },
+      500
+    );
+  }
+});
+
 api.get('/init', async (c) => {
   const { postId } = context;
 
