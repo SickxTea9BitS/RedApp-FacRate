@@ -91,6 +91,7 @@ export type FacultyRatingValues = {
   internalMarking: number;
   examEvaluation: number;
   overallRecommendation: number;
+  classAverage: number;
 };
 
 export type FacultyRatingSummary = {
