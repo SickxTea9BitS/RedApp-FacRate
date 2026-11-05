@@ -429,9 +429,9 @@ export const App = () => {
       const response = await fetch(`/api/mod/course-requests/${encodeURIComponent(request.id)}/${action}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: action === 'reject'
-          ? JSON.stringify({ reason: courseRejectReason, customReason: courseCustomReason })
-          : undefined,
+        ...(action === 'reject'
+          ? { body: JSON.stringify({ reason: courseRejectReason, customReason: courseCustomReason }) }
+          : {}),
       });
       const result = (await response.json()) as ModerationActionResponse;
       if (!response.ok || result.status !== 'success') {
@@ -1122,8 +1122,7 @@ export const App = () => {
                 )}
                 {ratingSummary?.eligibility.eligible && !ratingSummary.eligibility.hasRated && (
                   <form onSubmit={submitFacultyRating} style={{ display: 'grid', gap: '18px' }}>
-                    {ratingLabels.map(({ key, label }) => {
-                      const isTeaching = key === 'teaching';
+                    {ratingLabels.map(({ key }) => {
                       const isClassAverage = key === 'classAverage';
                       const question =
                         key === 'teaching'
