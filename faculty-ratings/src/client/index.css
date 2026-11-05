@@ -116,3 +116,9 @@ body {
   margin: 0;
   -webkit-overflow-scrolling: touch;
 }
+
+html,
+body,
+#root {
+  background-color: #1a1a1b;
+}
