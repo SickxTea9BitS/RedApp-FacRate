@@ -1,11 +1,14 @@
-
 import { useEffect, useState } from 'react';
 import type { FormEvent } from 'react';
 import { createRoot } from 'react-dom/client';
 import type {
   FacultyListResponse,
   FacultyRecord,
+  FacultyRequest,
   FacultyRequestSubmissionResponse,
+  ModerationActionResponse,
+  ModeratorRequestsResponse,
+  ModeratorStatusResponse,
 } from '../shared/api';
 import './index.css';
 
@@ -20,7 +23,14 @@ const SCHOOLS = [
   'SA',
 ];
 
-type View = 'home' | 'faculty' | 'faculty-detail' | 'request';
+const REJECTION_REASONS = [
+  'Duplicate Request',
+  'Already Exists',
+  'Invalid',
+  'Custom',
+];
+
+type View = 'home' | 'faculty' | 'faculty-detail' | 'request' | 'admin';
 type RatingMode = 'rate' | 'check';
 
 const styles = {
@@ -85,7 +95,6 @@ const styles = {
     textAlign: 'left' as const,
     color: 'white',
     width: '100%',
-    cursor: 'pointer',
   },
   muted: {
     color: '#999',
@@ -99,6 +108,18 @@ const styles = {
     fontWeight: 'bold' as const,
   },
 };
+
+const getFullName = (record: {
+  firstName: string;
+  middleName?: string;
+  lastName: string;
+}) =>
+  [record.firstName, record.middleName, record.lastName]
+    .filter(Boolean)
+    .join(' ');
+
+const formatDate = (timestamp: number) =>
+  new Date(timestamp).toLocaleString();
 
 export const App = () => {
   const [currentView, setCurrentView] = useState<View>('home');
@@ -118,6 +139,53 @@ export const App = () => {
   const [requestLoading, setRequestLoading] = useState(false);
   const [requestError, setRequestError] = useState('');
   const [requestSuccess, setRequestSuccess] = useState('');
+
+  const [isModerator, setIsModerator] = useState(false);
+  const [moderatorCheckLoading, setModeratorCheckLoading] = useState(true);
+  const [moderatorRequests, setModeratorRequests] = useState<FacultyRequest[]>(
+    []
+  );
+  const [moderatorLoading, setModeratorLoading] = useState(false);
+  const [moderatorError, setModeratorError] = useState('');
+  const [moderatorMessage, setModeratorMessage] = useState('');
+  const [activeRejectId, setActiveRejectId] = useState('');
+  const [rejectionReason, setRejectionReason] = useState('');
+  const [customReason, setCustomReason] = useState('');
+  const [moderationBusyId, setModerationBusyId] = useState('');
+
+  useEffect(() => {
+    let active = true;
+
+    const checkModerator = async () => {
+      try {
+        const response = await fetch('/api/mod/status');
+
+        if (!response.ok) {
+          throw new Error('Unable to verify moderator permissions.');
+        }
+
+        const result = (await response.json()) as ModeratorStatusResponse;
+
+        if (active && result.status === 'success') {
+          setIsModerator(result.isModerator);
+        }
+      } catch {
+        if (active) {
+          setIsModerator(false);
+        }
+      } finally {
+        if (active) {
+          setModeratorCheckLoading(false);
+        }
+      }
+    };
+
+    void checkModerator();
+
+    return () => {
+      active = false;
+    };
+  }, []);
 
   useEffect(() => {
     if (currentView !== 'faculty') {
@@ -199,12 +267,50 @@ export const App = () => {
   const goHome = () => {
     setCurrentView('home');
     setSelectedFaculty(null);
+    setModeratorMessage('');
+    setModeratorError('');
   };
 
-  const getFullName = (record: FacultyRecord) =>
-    [record.firstName, record.middleName, record.lastName]
-      .filter(Boolean)
-      .join(' ');
+  const loadModeratorRequests = async () => {
+    setModeratorLoading(true);
+    setModeratorError('');
+    setModeratorMessage('');
+
+    try {
+      const response = await fetch('/api/mod/requests');
+
+      const result =
+        (await response.json()) as
+          | ModeratorRequestsResponse
+          | { status: 'error'; message: string };
+
+      if (!response.ok || result.status !== 'success') {
+        throw new Error(
+          result.status === 'error'
+            ? result.message
+            : 'Unable to load pending requests.'
+        );
+      }
+
+      setModeratorRequests(result.requests);
+    } catch (err) {
+      setModeratorError(
+        err instanceof Error
+          ? err.message
+          : 'Something went wrong while loading requests.'
+      );
+    } finally {
+      setModeratorLoading(false);
+    }
+  };
+
+  const openAdminDashboard = () => {
+    setCurrentView('admin');
+    setActiveRejectId('');
+    setRejectionReason('');
+    setCustomReason('');
+    void loadModeratorRequests();
+  };
 
   const submitFacultyRequest = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -259,6 +365,96 @@ export const App = () => {
     }
   };
 
+  const approveRequest = async (request: FacultyRequest) => {
+    setModerationBusyId(request.id);
+    setModeratorError('');
+    setModeratorMessage('');
+
+    try {
+      const response = await fetch(
+        `/api/mod/requests/${encodeURIComponent(request.id)}/approve`,
+        {
+          method: 'POST',
+        }
+      );
+
+      const result = (await response.json()) as ModerationActionResponse;
+
+      if (!response.ok || result.status !== 'success') {
+        throw new Error(
+          result.status === 'error'
+            ? result.message
+            : 'Unable to approve this request.'
+        );
+      }
+
+      setModeratorMessage(result.message);
+      setActiveRejectId('');
+      await loadModeratorRequests();
+    } catch (err) {
+      setModeratorError(
+        err instanceof Error ? err.message : 'Unable to approve this request.'
+      );
+    } finally {
+      setModerationBusyId('');
+    }
+  };
+
+  const rejectRequest = async (request: FacultyRequest) => {
+    setModeratorError('');
+    setModeratorMessage('');
+
+    if (!rejectionReason) {
+      setModeratorError('Please select a rejection reason.');
+      return;
+    }
+
+    if (rejectionReason === 'Custom' && !customReason.trim()) {
+      setModeratorError('Please enter a custom rejection reason.');
+      return;
+    }
+
+    setModerationBusyId(request.id);
+
+    try {
+      const response = await fetch(
+        `/api/mod/requests/${encodeURIComponent(request.id)}/reject`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            reason: rejectionReason,
+            customReason,
+          }),
+        }
+      );
+
+      const result = (await response.json()) as ModerationActionResponse;
+
+      if (!response.ok || result.status !== 'success') {
+        throw new Error(
+          result.status === 'error'
+            ? result.message
+            : 'Unable to reject this request.'
+        );
+      }
+
+      setModeratorMessage(result.message);
+      setActiveRejectId('');
+      setRejectionReason('');
+      setCustomReason('');
+      await loadModeratorRequests();
+    } catch (err) {
+      setModeratorError(
+        err instanceof Error ? err.message : 'Unable to reject this request.'
+      );
+    } finally {
+      setModerationBusyId('');
+    }
+  };
+
   return (
     <div style={styles.page}>
       <main style={styles.container}>
@@ -297,6 +493,20 @@ export const App = () => {
                 Check Faculty Rating
               </button>
             </div>
+
+            {!moderatorCheckLoading && isModerator && (
+              <div style={{ marginTop: '42px' }}>
+                <button
+                  style={{
+                    ...styles.button,
+                    backgroundColor: '#d04422',
+                  }}
+                  onClick={openAdminDashboard}
+                >
+                  ⚙ Moderator Dashboard
+                </button>
+              </div>
+            )}
           </section>
         )}
 
@@ -403,7 +613,10 @@ export const App = () => {
                   {faculty.map((record) => (
                     <button
                       key={record.id}
-                      style={styles.card}
+                      style={{
+                        ...styles.card,
+                        cursor: 'pointer',
+                      }}
                       onClick={() => {
                         setSelectedFaculty(record);
                         setCurrentView('faculty-detail');
@@ -481,9 +694,7 @@ export const App = () => {
 
             <h1 style={styles.title}>{getFullName(selectedFaculty)}</h1>
 
-            <p style={styles.subtitle}>
-              School: {selectedFaculty.school}
-            </p>
+            <p style={styles.subtitle}>School: {selectedFaculty.school}</p>
 
             <div
               style={{
@@ -620,9 +831,7 @@ export const App = () => {
                     id="requestSchool"
                     style={styles.input}
                     value={requestSchool}
-                    onChange={(event) =>
-                      setRequestSchool(event.target.value)
-                    }
+                    onChange={(event) => setRequestSchool(event.target.value)}
                     required
                   >
                     <option value="">Select a school</option>
@@ -666,6 +875,277 @@ export const App = () => {
                   automatically add the faculty member.
                 </p>
               </form>
+            )}
+          </section>
+        )}
+
+        {currentView === 'admin' && (
+          <section>
+            <button
+              onClick={goHome}
+              style={{
+                ...styles.secondaryButton,
+                padding: '8px 14px',
+                marginBottom: '24px',
+              }}
+            >
+              ← Back to Home
+            </button>
+
+            <h1 style={styles.title}>Moderator Dashboard</h1>
+
+            <p style={styles.subtitle}>
+              Review student-submitted faculty requests. Approving a request
+              adds the faculty member to the public directory.
+            </p>
+
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                gap: '12px',
+                marginBottom: '20px',
+              }}
+            >
+              <strong>Pending Requests ({moderatorRequests.length})</strong>
+
+              <button
+                style={{
+                  ...styles.secondaryButton,
+                  padding: '8px 12px',
+                  fontSize: '0.9rem',
+                }}
+                onClick={() => void loadModeratorRequests()}
+                disabled={moderatorLoading}
+              >
+                {moderatorLoading ? 'Refreshing...' : 'Refresh'}
+              </button>
+            </div>
+
+            {moderatorMessage && (
+              <div
+                role="status"
+                style={{
+                  backgroundColor: '#173d2b',
+                  border: '1px solid #28764d',
+                  borderRadius: '8px',
+                  padding: '12px',
+                  color: '#a5edc1',
+                  marginBottom: '16px',
+                }}
+              >
+                {moderatorMessage}
+              </div>
+            )}
+
+            {moderatorError && (
+              <div
+                role="alert"
+                style={{
+                  backgroundColor: '#492323',
+                  border: '1px solid #8e3939',
+                  borderRadius: '8px',
+                  padding: '12px',
+                  color: '#ffb3b3',
+                  marginBottom: '16px',
+                }}
+              >
+                {moderatorError}
+              </div>
+            )}
+
+            {moderatorLoading && (
+              <p style={{ ...styles.muted, textAlign: 'center' }}>
+                Loading pending requests...
+              </p>
+            )}
+
+            {!moderatorLoading && moderatorRequests.length === 0 && (
+              <div
+                style={{
+                  ...styles.card,
+                  textAlign: 'center',
+                  padding: '30px 18px',
+                }}
+              >
+                <div style={{ fontSize: '2rem', marginBottom: '12px' }}>
+                  ✓
+                </div>
+
+                <h3 style={{ margin: '0 0 8px' }}>No pending requests</h3>
+
+                <p style={styles.muted}>
+                  New faculty requests will appear here.
+                </p>
+              </div>
+            )}
+
+            {!moderatorLoading && moderatorRequests.length > 0 && (
+              <div style={{ display: 'grid', gap: '16px' }}>
+                {moderatorRequests.map((request) => {
+                  const isBusy = moderationBusyId === request.id;
+                  const isRejecting = activeRejectId === request.id;
+
+                  return (
+                    <article
+                      key={request.id}
+                      style={{
+                        ...styles.card,
+                        display: 'grid',
+                        gap: '13px',
+                      }}
+                    >
+                      <div>
+                        <h3 style={{ margin: '0 0 8px', fontSize: '1.2rem' }}>
+                          {getFullName(request)}
+                        </h3>
+
+                        <p style={{ ...styles.muted, margin: '4px 0' }}>
+                          School: <strong>{request.school}</strong>
+                        </p>
+
+                        <p style={{ ...styles.muted, margin: '4px 0' }}>
+                          Submitted by: u/{request.submittedByUsername}
+                        </p>
+
+                        <p style={{ ...styles.muted, margin: '4px 0' }}>
+                          Submitted: {formatDate(request.createdAt)}
+                        </p>
+                      </div>
+
+                      <div
+                        style={{
+                          display: 'flex',
+                          flexWrap: 'wrap',
+                          gap: '10px',
+                        }}
+                      >
+                        <button
+                          style={{
+                            ...styles.button,
+                            backgroundColor: '#23834c',
+                            opacity: isBusy ? 0.6 : 1,
+                          }}
+                          onClick={() => void approveRequest(request)}
+                          disabled={Boolean(moderationBusyId)}
+                        >
+                          {isBusy ? 'Processing...' : '✓ Approve'}
+                        </button>
+
+                        <button
+                          style={{
+                            ...styles.secondaryButton,
+                            borderColor: '#d04444',
+                            color: '#ff7777',
+                            opacity: isBusy ? 0.6 : 1,
+                          }}
+                          onClick={() => {
+                            setActiveRejectId(
+                              isRejecting ? '' : request.id
+                            );
+                            setRejectionReason('');
+                            setCustomReason('');
+                            setModeratorError('');
+                          }}
+                          disabled={Boolean(moderationBusyId)}
+                        >
+                          Reject
+                        </button>
+                      </div>
+
+                      {isRejecting && (
+                        <div
+                          style={{
+                            borderTop: '1px solid #444',
+                            paddingTop: '15px',
+                            display: 'grid',
+                            gap: '12px',
+                          }}
+                        >
+                          <label style={styles.label} htmlFor={`reason-${request.id}`}>
+                            Rejection Reason *
+                          </label>
+
+                          <select
+                            id={`reason-${request.id}`}
+                            style={styles.input}
+                            value={rejectionReason}
+                            onChange={(event) =>
+                              setRejectionReason(event.target.value)
+                            }
+                          >
+                            <option value="">Select a reason</option>
+
+                            {REJECTION_REASONS.map((reason) => (
+                              <option key={reason} value={reason}>
+                                {reason}
+                              </option>
+                            ))}
+                          </select>
+
+                          {rejectionReason === 'Custom' && (
+                            <div>
+                              <label
+                                style={styles.label}
+                                htmlFor={`custom-${request.id}`}
+                              >
+                                Custom Explanation *
+                              </label>
+
+                              <textarea
+                                id={`custom-${request.id}`}
+                                style={{
+                                  ...styles.input,
+                                  minHeight: '100px',
+                                  resize: 'vertical',
+                                }}
+                                value={customReason}
+                                onChange={(event) =>
+                                  setCustomReason(event.target.value)
+                                }
+                                placeholder="Explain why this request is being rejected..."
+                                maxLength={300}
+                              />
+                            </div>
+                          )}
+
+                          <div
+                            style={{
+                              display: 'flex',
+                              flexWrap: 'wrap',
+                              gap: '10px',
+                            }}
+                          >
+                            <button
+                              style={{
+                                ...styles.button,
+                                backgroundColor: '#b83232',
+                              }}
+                              onClick={() => void rejectRequest(request)}
+                              disabled={Boolean(moderationBusyId)}
+                            >
+                              {isBusy ? 'Processing...' : 'Confirm Rejection'}
+                            </button>
+
+                            <button
+                              style={styles.secondaryButton}
+                              onClick={() => {
+                                setActiveRejectId('');
+                                setRejectionReason('');
+                                setCustomReason('');
+                              }}
+                              disabled={Boolean(moderationBusyId)}
+                            >
+                              Cancel
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                    </article>
+                  );
+                })}
+              </div>
             )}
           </section>
         )}
