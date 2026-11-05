@@ -32,6 +32,7 @@ export type FacultyApprovalInput = {
   middleName: string;
   lastName: string;
   school: string;
+  courseCodes: string[];
 };
 
 export type FacultyListResponse = {
