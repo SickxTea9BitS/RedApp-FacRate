@@ -85,3 +85,23 @@
   border: 1px solid #ffffff44;
   border-radius: 50%;
 }
+
+
+.rating-slider-three {
+  background: linear-gradient(
+    to right,
+    #111111 0%,
+    #111111 33.333%,
+    #ff9800 33.333%,
+    #ff9800 66.666%,
+    #4caf50 66.666%,
+    #4caf50 100%
+  );
+}
+
+.rating-value {
+  margin: -2px 0 6px;
+  color: #eeeeee;
+  font-weight: 700;
+  text-align: right;
+}
