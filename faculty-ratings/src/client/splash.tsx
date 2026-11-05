@@ -852,13 +852,25 @@ export const App = () => {
                       <strong>{label}</strong>
                       <strong>{value}%</strong>
                     </div>
-                    <div style={{ height: '14px', background: '#444', borderRadius: '20px', overflow: 'hidden' }}>
+                    <div
+                      style={{
+                        height: '14px',
+                        position: 'relative',
+                        background: 'linear-gradient(to right, #111 0%, #e53935 25%, #ff9800 50%, #ffeb3b 75%, #4caf50 100%)',
+                        borderRadius: '20px',
+                      }}
+                    >
                       <div
                         style={{
-                          width: `${value}%`,
-                          height: '100%',
-                          borderRadius: '20px',
-                          background: 'linear-gradient(to right, #111 0%, #e53935 25%, #ff9800 50%, #ffeb3b 75%, #4caf50 100%)',
+                          position: 'absolute',
+                          left: `${value}%`,
+                          top: '-3px',
+                          height: '20px',
+                          width: '4px',
+                          background: '#fff',
+                          border: '1px solid #222',
+                          borderRadius: '3px',
+                          transform: 'translateX(-50%)',
                         }}
                       />
                     </div>
