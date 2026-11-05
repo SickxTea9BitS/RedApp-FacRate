@@ -6,6 +6,8 @@ import type {
   FacultyRecord,
   FacultyRequest,
   FacultyRequestSubmissionResponse,
+  FacultyRatingSummary,
+  FacultyRatingValues,
   ModerationActionResponse,
   ModeratorRequestsResponse,
   ModeratorStatusResponse,
@@ -159,6 +161,19 @@ export const App = () => {
   const [approvalLastName, setApprovalLastName] = useState('');
   const [approvalSchool, setApprovalSchool] = useState('');
 
+  const [ratingSummary, setRatingSummary] = useState<FacultyRatingSummary | null>(null);
+  const [ratingValues, setRatingValues] = useState<FacultyRatingValues>({
+    teaching: 50,
+    internalMarking: 50,
+    examEvaluation: 50,
+    overallRecommendation: 50,
+  });
+  const [ratingLoading, setRatingLoading] = useState(false);
+  const [ratingSubmitting, setRatingSubmitting] = useState(false);
+  const [ratingError, setRatingError] = useState('');
+  const [ratingMessage, setRatingMessage] = useState('');
+
+
 
   useEffect(() => {
     let active = true;
@@ -252,6 +267,68 @@ export const App = () => {
       active = false;
     };
   }, [currentView, search, selectedSchool]);
+
+
+  useEffect(() => {
+    if (currentView !== 'faculty-detail' || !selectedFaculty) return;
+    let active = true;
+    const loadRatings = async () => {
+      setRatingLoading(true);
+      setRatingError('');
+      setRatingMessage('');
+      try {
+        const response = await fetch(`/api/faculty/${encodeURIComponent(selectedFaculty.id)}/ratings`);
+        const result = (await response.json()) as FacultyRatingSummary | { status: 'error'; message: string };
+        if (!response.ok || result.status !== 'success') {
+          throw new Error(result.status === 'error' ? result.message : 'Unable to load ratings.');
+        }
+        if (active) setRatingSummary(result);
+      } catch (error) {
+        if (active) setRatingError(error instanceof Error ? error.message : 'Unable to load ratings.');
+      } finally {
+        if (active) setRatingLoading(false);
+      }
+    };
+    void loadRatings();
+    return () => { active = false; };
+  }, [currentView, selectedFaculty]);
+
+  const submitFacultyRating = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!selectedFaculty) return;
+    setRatingSubmitting(true);
+    setRatingError('');
+    setRatingMessage('');
+    try {
+      const response = await fetch(
+        `/api/faculty/${encodeURIComponent(selectedFaculty.id)}/ratings`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(ratingValues),
+        }
+      );
+      const result = (await response.json()) as { status: 'success' | 'error'; message: string };
+      if (!response.ok || result.status !== 'success') {
+        throw new Error(result.message || 'Unable to submit your rating.');
+      }
+      setRatingMessage(result.message);
+      const summaryResponse = await fetch(`/api/faculty/${encodeURIComponent(selectedFaculty.id)}/ratings`);
+      const summary = (await summaryResponse.json()) as FacultyRatingSummary;
+      if (summaryResponse.ok && summary.status === 'success') setRatingSummary(summary);
+    } catch (error) {
+      setRatingError(error instanceof Error ? error.message : 'Unable to submit your rating.');
+    } finally {
+      setRatingSubmitting(false);
+    }
+  };
+
+  const ratingLabels: { key: keyof FacultyRatingValues; label: string }[] = [
+    { key: 'teaching', label: 'Teaching' },
+    { key: 'internalMarking', label: 'Internal Marking' },
+    { key: 'examEvaluation', label: 'Exam Evaluation' },
+    { key: 'overallRecommendation', label: 'Overall Recommendation' },
+  ];
 
   const openFacultyList = (mode: RatingMode) => {
     setRatingMode(mode);
@@ -732,6 +809,7 @@ export const App = () => {
           </section>
         )}
 
+
         {currentView === 'faculty-detail' && selectedFaculty && (
           <section>
             <button
@@ -746,27 +824,98 @@ export const App = () => {
             </button>
 
             <h1 style={styles.title}>{getFullName(selectedFaculty)}</h1>
-
             <p style={styles.subtitle}>School: {selectedFaculty.school}</p>
 
-            <div
-              style={{
-                backgroundColor: '#252526',
-                border: '1px solid #383838',
-                borderRadius: '10px',
-                padding: '22px',
-              }}
-            >
-              <h3>
-                {ratingMode === 'rate'
-                  ? 'Submit a Faculty Rating'
-                  : 'Faculty Rating Summary'}
-              </h3>
+            {ratingLoading && <p style={styles.muted}>Loading ratings...</p>}
+            {ratingError && (
+              <div role="alert" style={{ color: '#ffb3b3', marginBottom: '14px' }}>
+                {ratingError}
+              </div>
+            )}
+            {ratingMessage && (
+              <div role="status" style={{ color: '#8de0ad', marginBottom: '14px' }}>
+                {ratingMessage}
+              </div>
+            )}
 
-              <p style={styles.muted}>
-                The rating system will be implemented in Phase 4.
-              </p>
+            <div style={{ ...styles.card, display: 'grid', gap: '18px', marginBottom: '18px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', gap: '12px', alignItems: 'center' }}>
+                <h3 style={{ margin: 0 }}>Faculty Rating Summary</h3>
+                <strong>{ratingSummary?.count ?? 0} {ratingSummary?.count === 1 ? 'rating' : 'ratings'}</strong>
+              </div>
+
+              {ratingLabels.map(({ key, label }) => {
+                const value = ratingSummary?.averages[key] ?? 0;
+                return (
+                  <div key={key}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '7px' }}>
+                      <strong>{label}</strong>
+                      <strong>{value}%</strong>
+                    </div>
+                    <div style={{ height: '14px', background: '#444', borderRadius: '20px', overflow: 'hidden' }}>
+                      <div
+                        style={{
+                          width: `${value}%`,
+                          height: '100%',
+                          borderRadius: '20px',
+                          background: 'linear-gradient(to right, #111 0%, #e53935 25%, #ff9800 50%, #ffeb3b 75%, #4caf50 100%)',
+                        }}
+                      />
+                    </div>
+                  </div>
+                );
+              })}
+
+              <div style={{ display: 'flex', justifyContent: 'space-between', color: '#aaa', fontSize: '0.78rem' }}>
+                <span>0% · Poor</span><span>25%</span><span>50%</span><span>75%</span><span>100% · Excellent</span>
+              </div>
             </div>
+
+            {ratingMode === 'rate' && (
+              <div style={{ ...styles.card, display: 'grid', gap: '16px' }}>
+                <h3 style={{ margin: 0 }}>Submit Your Rating</h3>
+                {!ratingSummary?.eligibility.loggedIn && (
+                  <p style={styles.muted}>Log in to Reddit to check your eligibility and submit a rating.</p>
+                )}
+                {ratingSummary?.eligibility.loggedIn && !ratingSummary.eligibility.eligible && (
+                  <div style={{ background: '#492323', border: '1px solid #8e3939', borderRadius: '8px', padding: '12px', color: '#ffb3b3' }}>
+                    {ratingSummary.eligibility.reason}
+                    <p style={{ margin: '8px 0 0', fontSize: '0.85rem' }}>
+                      Current account age: {ratingSummary.eligibility.accountAgeDays} days · Total karma: {ratingSummary.eligibility.totalKarma}
+                    </p>
+                  </div>
+                )}
+                {ratingSummary?.eligibility.hasRated && (
+                  <p style={{ color: '#8de0ad', margin: 0 }}>You have already submitted a rating for this faculty member.</p>
+                )}
+                {ratingSummary?.eligibility.eligible && !ratingSummary.eligibility.hasRated && (
+                  <form onSubmit={submitFacultyRating} style={{ display: 'grid', gap: '18px' }}>
+                    {ratingLabels.map(({ key, label }) => (
+                      <div key={key}>
+                        <label style={{ ...styles.label, display: 'flex', justifyContent: 'space-between' }}>
+                          <span>{label}</span><span>{ratingValues[key]}%</span>
+                        </label>
+                        <input
+                          type="range"
+                          min="0"
+                          max="100"
+                          step="1"
+                          value={ratingValues[key]}
+                          onChange={(event) => setRatingValues((current) => ({ ...current, [key]: Number(event.target.value) }))}
+                          style={{ width: '100%', accentColor: '#ff9800' }}
+                        />
+                      </div>
+                    ))}
+                    <button type="submit" style={styles.button} disabled={ratingSubmitting}>
+                      {ratingSubmitting ? 'Submitting...' : 'Submit Rating'}
+                    </button>
+                    <p style={{ ...styles.muted, margin: 0 }}>
+                      Eligibility: Reddit account at least 30 days old and at least 15 total karma. One rating per account per faculty member.
+                    </p>
+                  </form>
+                )}
+              </div>
+            )}
           </section>
         )}
 
