@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import type { FormEvent } from 'react';
 import { createRoot } from 'react-dom/client';
 import type {
+  ApiErrorResponse,
   FacultyListResponse,
   FacultyRecord,
   FacultyRequest,
@@ -39,7 +40,7 @@ const REJECTION_REASONS = [
 ];
 
 type View = 'home' | 'faculty' | 'faculty-detail' | 'request' | 'course-request' | 'admin';
-type RatingMode = 'check';
+type RatingMode = 'check' | 'rate';
 
 const styles = {
   page: {
