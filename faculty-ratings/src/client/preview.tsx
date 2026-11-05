@@ -52,10 +52,21 @@ const Preview = () => {
 
   return (
     <main className="faculty-preview">
-      <div style={{ fontSize: '1.5rem', marginBottom: '4px' }}>🎓</div>
-      <h1 style={{ fontSize: '1.25rem', margin: '0 0 6px' }}>Faculty Ratings</h1>
-      <p style={{ color: '#aaa', fontSize: '0.9rem', margin: '0 auto 12px', lineHeight: 1.35, maxWidth: '420px' }}>
-        Search faculty members, explore student ratings, and submit faculty or course requests.
+      <img
+        src="/vit-bhopal-logo.png"
+        alt="VIT Bhopal University logo"
+        style={{
+          display: 'block',
+          width: '180px',
+          maxWidth: '55%',
+          height: '100px',
+          objectFit: 'contain',
+          marginBottom: '12px',
+        }}
+      />
+      <h1 style={{ fontSize: '1.25rem', margin: '0 0 6px' }}>r/vitbhopal Faculty Ratings</h1>
+      <p style={{ color: '#aaa', fontSize: '0.9rem', margin: '0 auto 12px', lineHeight: 1.35, maxWidth: '540px' }}>
+        A reddit app to help Lions of r/vitbhopal to share their faculty ratings to help with FFCS.
       </p>
       <button
         type="button"
