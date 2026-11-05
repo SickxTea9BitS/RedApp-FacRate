@@ -706,7 +706,10 @@ api.post('/mod/faculty-course-requests/:id/approve', async (c) => {
     const facultyRecord = JSON.parse(storedFaculty) as FacultyRecord;
     const updatedCodes = Array.from(new Set([...(facultyRecord.courseCodes ?? []), ...selected]));
     await redis.hSet(FACULTY_HASH_KEY, { [request.facultyId]: JSON.stringify({ ...facultyRecord, courseCodes: updatedCodes }) });
-    await redis.hDel(FACULTY_COURSE_TAG_REQUESTS_HASH_KEY, id);
+    const deleted = await redis.hDel(FACULTY_COURSE_TAG_REQUESTS_HASH_KEY, [id]);
+    if (deleted !== 1) {
+      return c.json<ApiErrorResponse>({ status: 'error', message: 'The course was added, but the request could not be cleared. Refresh and try again.' }, 500);
+    }
     return c.json({ status: 'success' as const, message: 'Approved ' + selected.join(', ') + ' for ' + getFullName(facultyRecord) + '.' });
   } catch (error) {
     console.error('Faculty course tag approval error:', error);
@@ -720,7 +723,8 @@ api.post('/mod/faculty-course-requests/:id/reject', async (c) => {
     const id = c.req.param('id');
     const stored = await redis.hGet(FACULTY_COURSE_TAG_REQUESTS_HASH_KEY, id);
     if (!stored) return c.json<ApiErrorResponse>({ status: 'error', message: 'Request not found.' }, 404);
-    await redis.hDel(FACULTY_COURSE_TAG_REQUESTS_HASH_KEY, id);
+    const deleted = await redis.hDel(FACULTY_COURSE_TAG_REQUESTS_HASH_KEY, [id]);
+    if (deleted !== 1) return c.json<ApiErrorResponse>({ status: 'error', message: 'The request could not be cleared. Refresh and try again.' }, 500);
     return c.json({ status: 'success' as const, message: 'Faculty course tag request rejected.' });
   } catch (error) {
     console.error('Faculty course tag rejection error:', error);
