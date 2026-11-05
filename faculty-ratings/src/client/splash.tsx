@@ -6,6 +6,8 @@ import type {
   FacultyRecord,
   FacultyRequest,
   FacultyRequestSubmissionResponse,
+  CourseRecord,
+  CourseListResponse,
   FacultyRatingSummary,
   FacultyRatingValues,
   ModerationActionResponse,
@@ -144,6 +146,12 @@ export const App = () => {
   const [requestLoading, setRequestLoading] = useState(false);
   const [requestError, setRequestError] = useState('');
   const [requestSuccess, setRequestSuccess] = useState('');
+  const [availableCourses, setAvailableCourses] = useState<CourseRecord[]>([]);
+  const [selectedCourseCodes, setSelectedCourseCodes] = useState<string[]>([]);
+  const [courseSearch, setCourseSearch] = useState('');
+  const [courseOptionsLoading, setCourseOptionsLoading] = useState(false);
+  const [courseOptionsError, setCourseOptionsError] = useState('');
+
 
   const [isModerator, setIsModerator] = useState(false);
   const [moderatorCheckLoading, setModeratorCheckLoading] = useState(true);
@@ -439,7 +447,28 @@ export const App = () => {
     }
   };
 
+  const loadAvailableCourses = async () => {
+    setCourseOptionsLoading(true);
+    setCourseOptionsError('');
+    try {
+      const response = await fetch('/api/courses');
+      const result = (await response.json()) as CourseListResponse | { status: 'error'; message: string };
+      if (!response.ok || result.status !== 'success') {
+        throw new Error(result.status === 'error' ? result.message : 'Unable to load courses.');
+      }
+      setAvailableCourses(result.courses);
+    } catch (error) {
+      setCourseOptionsError(error instanceof Error ? error.message : 'Unable to load courses.');
+    } finally {
+      setCourseOptionsLoading(false);
+    }
+  };
+
   const openRequestForm = () => {
+    setSelectedCourseCodes([]);
+    setCourseSearch('');
+    void loadAvailableCourses();
+
     setFirstName('');
     setMiddleName('');
     setLastName('');
@@ -521,6 +550,7 @@ export const App = () => {
           middleName,
           lastName,
           school: requestSchool,
+          courseCodes: selectedCourseCodes,
         }),
       });
 
@@ -540,6 +570,8 @@ export const App = () => {
       setMiddleName('');
       setLastName('');
       setRequestSchool('');
+      setSelectedCourseCodes([]);
+      setCourseSearch('');
     } catch (err) {
       setRequestError(
         err instanceof Error
@@ -1279,6 +1311,65 @@ export const App = () => {
                       </option>
                     ))}
                   </select>
+                </div>
+
+
+                <div>
+                  <label style={styles.label} htmlFor="faculty-course-search">Course(s) (Optional)</label>
+                  <input
+                    id="faculty-course-search"
+                    style={styles.input}
+                    value={courseSearch}
+                    onChange={(event) => setCourseSearch(event.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 7))}
+                    placeholder="Search course code, e.g. MAT1001"
+                    maxLength={7}
+                  />
+                  {courseOptionsLoading && <p style={styles.muted}>Loading approved courses...</p>}
+                  {courseOptionsError && <p role="alert" style={{ color: '#ffb3b3' }}>{courseOptionsError}</p>}
+                  {selectedCourseCodes.length > 0 && (
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', margin: '10px 0' }}>
+                      {selectedCourseCodes.map((code) => (
+                        <span key={code} style={{ display: 'inline-flex', alignItems: 'center', gap: '7px', background: '#173d5a', border: '1px solid #287bb3', borderRadius: '18px', padding: '6px 10px' }}>
+                          {code}
+                          <button type="button" aria-label={`Remove ${code}`} onClick={() => setSelectedCourseCodes((current) => current.filter((item) => item !== code))} style={{ border: 0, background: 'transparent', color: '#fff', cursor: 'pointer', padding: 0 }}>×</button>
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                  <div style={{ display: 'grid', gap: '7px', marginTop: '8px' }}>
+                    {availableCourses
+                      .filter((course) => !selectedCourseCodes.includes(course.code))
+                      .filter((course) => !courseSearch || course.code.includes(courseSearch))
+                      .slice(0, 12)
+                      .map((course) => (
+                        <button
+                          key={course.code}
+                          type="button"
+                          onClick={() => setSelectedCourseCodes((current) => [...current, course.code])}
+                          style={{ ...styles.secondaryButton, textAlign: 'left', padding: '8px 12px' }}
+                        >
+                          + {course.code}
+                        </button>
+                      ))}
+                    {!courseOptionsLoading && courseSearch.length > 0 && !availableCourses.some((course) => course.code.includes(courseSearch)) && (
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px', padding: '10px', background: '#1d1d1e', borderRadius: '8px' }}>
+                        <span style={styles.muted}>No approved course found.</span>
+                        <button
+                          type="button"
+                          style={{ ...styles.secondaryButton, padding: '7px 10px', whiteSpace: 'nowrap' }}
+                          onClick={() => {
+                            setCourseCode(courseSearch);
+                            setCourseRequestError('');
+                            setCourseRequestSuccess('');
+                            setCurrentView('course-request');
+                          }}
+                        >
+                          Request {courseSearch}
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                  <p style={{ ...styles.muted, margin: '8px 0 0' }}>You can select multiple approved courses. This field is optional.</p>
                 </div>
 
                 {requestError && (
