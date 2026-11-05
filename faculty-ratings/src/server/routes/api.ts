@@ -348,7 +348,6 @@ api.post('/requests', async (c) => {
     await redis.hSet(REQUESTS_HASH_KEY, {
       [requestId]: JSON.stringify(request),
     });
-
     return c.json<FacultyRequestSubmissionResponse>({
       status: 'success',
       message: 'Your faculty request has been submitted for moderator review.',
@@ -582,7 +581,6 @@ api.put('/mod/faculty/:id', async (c) => {
         return c.json<ApiErrorResponse>({ status: 'error', message: 'Invalid course selection.' }, 400);
       }
       const code = value.trim().toUpperCase();
-      if (alreadyAssigned.includes(code)) return c.json<ApiErrorResponse>({ status: 'error', message: code + ' is already assigned to this faculty member.' }, 409);
       if (!COURSE_CODE_PATTERN.test(code) || courseCodes.includes(code)) {
         return c.json<ApiErrorResponse>({ status: 'error', message: 'Course selections must be valid and unique.' }, 400);
       }
@@ -697,8 +695,7 @@ api.post('/mod/faculty-course-requests/:id/approve', async (c) => {
     const stored = await redis.hGet(FACULTY_COURSE_TAG_REQUESTS_HASH_KEY, id);
     if (!stored) return c.json<ApiErrorResponse>({ status: 'error', message: 'Request not found.' }, 404);
     const request = JSON.parse(stored) as FacultyCourseTagRequest;
-    const body = await c.req.json<{ courseCodes?: unknown }>();
-    if (!Array.isArray(body.courseCodes)) return c.json<ApiErrorResponse>({ status: 'error', message: 'Choose one or more requested courses to approve.' }, 400);
+    const body = await c.req.json<{ courseCodes?: unknown }>();    if (!Array.isArray(body.courseCodes)) return c.json<ApiErrorResponse>({ status: 'error', message: 'Choose one or more requested courses to approve.' }, 400);
     const selected = body.courseCodes.filter((value): value is string => typeof value === 'string');
     if (!selected.length || selected.some((code) => !request.courseCodes.includes(code))) return c.json<ApiErrorResponse>({ status: 'error', message: 'Choose at least one valid requested course.' }, 400);
     const storedFaculty = await redis.hGet(FACULTY_HASH_KEY, request.facultyId);
@@ -1047,8 +1044,7 @@ api.post('/mod/requests/:id/reject', async (c) => {
           message: 'Faculty request not found.',
         },
         404
-      );
-    }
+      );    }
 
     const request = JSON.parse(storedRequest) as FacultyRequest;
 
@@ -1396,27 +1392,5 @@ api.post('/increment', async (c) => {
     count,
     postId,
     type: 'increment',
-  });
-});
-
-api.post('/decrement', async (c) => {
-  const { postId } = context;
-
-  if (!postId) {
-    return c.json<ApiErrorResponse>(
-      {
-        status: 'error',
-        message: 'postId is required',
-      },
-      400
-    );
-  }
-
-  const count = await redis.incrBy('count', -1);
-
-  return c.json<DecrementResponse>({
-    count,
-    postId,
-    type: 'decrement',
   });
 });
