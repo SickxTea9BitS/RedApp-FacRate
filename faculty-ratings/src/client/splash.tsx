@@ -44,7 +44,7 @@ type RatingMode = 'check' | 'rate';
 
 const styles = {
   page: {
-    backgroundColor: '#1a1a1b',
+    backgroundColor: '#2b3258',
     color: '#ffffff',
     minHeight: '100vh',
     padding: '28px 20px',
@@ -61,7 +61,7 @@ const styles = {
     marginBottom: '8px',
   },
   subtitle: {
-    color: '#aaa',
+    color: '#c6cde2',
     marginBottom: '28px',
     lineHeight: 1.5,
   },
@@ -69,7 +69,7 @@ const styles = {
     padding: '12px 20px',
     borderRadius: '8px',
     border: 'none',
-    backgroundColor: '#0079D3',
+    backgroundColor: '#6ea8ff',
     color: 'white',
     fontSize: '1rem',
     fontWeight: 'bold' as const,
@@ -78,9 +78,9 @@ const styles = {
   secondaryButton: {
     padding: '11px 20px',
     borderRadius: '8px',
-    border: '1px solid #0079D3',
+    border: '1px solid #6ea8ff',
     backgroundColor: 'transparent',
-    color: '#38aaff',
+    color: '#b4d0ff',
     fontSize: '1rem',
     fontWeight: 'bold' as const,
     cursor: 'pointer',
@@ -89,16 +89,16 @@ const styles = {
     width: '100%',
     padding: '13px',
     borderRadius: '8px',
-    border: '1px solid #444',
-    backgroundColor: '#252526',
+    border: '1px solid #56618d',
+    backgroundColor: '#343d68',
     color: 'white',
     fontSize: '1rem',
     boxSizing: 'border-box' as const,
     outline: 'none',
   },
   card: {
-    backgroundColor: '#252526',
-    border: '1px solid #383838',
+    backgroundColor: '#343d68',
+    border: '1px solid #4a5687',
     borderRadius: '10px',
     padding: '16px',
     textAlign: 'left' as const,
@@ -106,13 +106,13 @@ const styles = {
     width: '100%',
   },
   muted: {
-    color: '#999',
+    color: '#b5bfdc',
     fontSize: '0.9rem',
   },
   label: {
     display: 'block',
     marginBottom: '7px',
-    color: '#ddd',
+    color: '#e4e9f7',
     fontSize: '0.95rem',
     fontWeight: 'bold' as const,
   },
@@ -889,9 +889,19 @@ export const App = () => {
       <main style={styles.container}>
         {currentView === 'home' && (
           <section style={{ textAlign: 'center', paddingTop: '12vh' }}>
-            <div style={{ fontSize: '2.5rem', marginBottom: '12px' }}>
-              🎓
-            </div>
+            <img
+              src="/vit-bhopal-logo.png"
+              alt="VIT Bhopal University"
+              style={{
+                display: 'block',
+                width: '220px',
+                maxWidth: '75%',
+                height: '122px',
+                objectFit: 'contain',
+                filter: 'brightness(0) invert(1)',
+                margin: '0 auto 24px',
+              }}
+            />
 
             <h1 style={styles.title}>Faculty Rating Portal</h1>
 
@@ -1012,7 +1022,7 @@ export const App = () => {
 
             <div style={{ marginTop: '26px' }}>
               {loading && (
-                <p style={{ color: '#aaa', textAlign: 'center' }}>
+                <p style={{ color: '#c6cde2', textAlign: 'center' }}>
                   Loading faculty...
                 </p>
               )}
@@ -1034,8 +1044,8 @@ export const App = () => {
               {!loading && !error && faculty.length === 0 && (
                 <div
                   style={{
-                    backgroundColor: '#252526',
-                    border: '1px solid #383838',
+                    backgroundColor: '#343d68',
+                    border: '1px solid #4a5687',
                     borderRadius: '10px',
                     padding: '28px 18px',
                     textAlign: 'center',
@@ -1103,7 +1113,7 @@ export const App = () => {
                         </p>
                         <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginTop: '8px' }}>
                           {(record.courseCodes ?? []).length > 0 ? record.courseCodes!.map((code) => (
-                            <span key={code} style={{ background: '#173d5a', border: '1px solid #287bb3', color: '#d6edff', borderRadius: '12px', padding: '3px 8px', fontSize: '0.78rem' }}>{code}</span>
+                            <span key={code} style={{ background: '#3a4d7f', border: '1px solid #7695d2', color: '#f2f6ff', borderRadius: '12px', padding: '3px 8px', fontSize: '0.78rem' }}>{code}</span>
                           )) : <span style={{ ...styles.muted, fontSize: '0.8rem' }}>No courses assigned</span>}
                         </div>
                         <p style={{ ...styles.muted, marginBottom: 0, marginTop: '5px' }}>
@@ -1125,9 +1135,9 @@ export const App = () => {
                             padding: '7px 13px',
                             borderRadius: '7px',
                             border: '1px solid',
-                            borderColor: record.hasRated ? '#555' : '#0079D3',
-                            backgroundColor: record.hasRated ? '#3a3a3a' : '#0079D3',
-                            color: record.hasRated ? '#999' : '#fff',
+                            borderColor: record.hasRated ? '#7884ad' : '#6ea8ff',
+                            backgroundColor: record.hasRated ? '#424d76' : '#6ea8ff',
+                            color: record.hasRated ? '#b5bfdc' : '#fff',
                             fontSize: '0.85rem',
                             fontWeight: 700,
                             cursor: record.hasRated ? 'not-allowed' : 'pointer',
@@ -1137,7 +1147,7 @@ export const App = () => {
                         >
                           {record.hasRated ? 'Rated' : 'Rate'}
                         </button>
-                        <span style={{ color: '#38aaff', fontSize: '1.3rem' }}>→</span>
+                        <span style={{ color: '#b4d0ff', fontSize: '1.3rem' }}>→</span>
                       </div>
                     </div>
                   ))}
@@ -1150,8 +1160,8 @@ export const App = () => {
                 marginTop: '32px',
                 padding: '20px',
                 borderRadius: '10px',
-                backgroundColor: '#252526',
-                border: '1px solid #383838',
+                backgroundColor: '#343d68',
+                border: '1px solid #4a5687',
                 textAlign: 'center',
               }}
             >
@@ -1202,9 +1212,9 @@ export const App = () => {
                   ...styles.secondaryButton,
                   padding: '8px 16px',
                   flexShrink: 0,
-                  borderColor: ratingSummary?.eligibility.hasRated ? '#555' : '#0079D3',
-                  color: ratingSummary?.eligibility.hasRated ? '#999' : '#38aaff',
-                  backgroundColor: ratingSummary?.eligibility.hasRated ? '#303030' : 'transparent',
+                  borderColor: ratingSummary?.eligibility.hasRated ? '#7884ad' : '#6ea8ff',
+                  color: ratingSummary?.eligibility.hasRated ? '#b5bfdc' : '#b4d0ff',
+                  backgroundColor: ratingSummary?.eligibility.hasRated ? '#424d76' : 'transparent',
                   cursor: ratingSummary?.eligibility.hasRated ? 'not-allowed' : 'pointer',
                   opacity: ratingSummary?.eligibility.hasRated ? 0.7 : 1,
                 }}
@@ -1216,7 +1226,7 @@ export const App = () => {
             <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '7px', margin: '0 0 18px' }}>
               <strong style={{ fontSize: '0.9rem' }}>Courses:</strong>
               {(selectedFaculty.courseCodes ?? []).length > 0 ? selectedFaculty.courseCodes!.map((code) => (
-                <span key={code} style={{ background: '#173d5a', border: '1px solid #287bb3', color: '#d6edff', borderRadius: '14px', padding: '5px 10px', fontSize: '0.85rem' }}>{code}</span>
+                <span key={code} style={{ background: '#3a4d7f', border: '1px solid #7695d2', color: '#f2f6ff', borderRadius: '14px', padding: '5px 10px', fontSize: '0.85rem' }}>{code}</span>
               )) : <span style={styles.muted}>No courses assigned</span>}
             </div>
             <div style={{ margin: '0 0 20px', display: 'grid', gap: '10px' }}>
@@ -1283,7 +1293,7 @@ export const App = () => {
                           height: '20px',
                           width: '4px',
                           background: '#fff',
-                          border: '1px solid #222',
+                          border: '1px solid #1d2442',
                           borderRadius: '3px',
                           transform: 'translateX(-50%)',
                         }}
@@ -1480,8 +1490,8 @@ export const App = () => {
               <form
                 onSubmit={submitFacultyRequest}
                 style={{
-                  backgroundColor: '#252526',
-                  border: '1px solid #383838',
+                  backgroundColor: '#343d68',
+                  border: '1px solid #4a5687',
                   borderRadius: '10px',
                   padding: '22px',
                   display: 'grid',
@@ -1573,7 +1583,7 @@ export const App = () => {
                   {selectedCourseCodes.length > 0 && (
                     <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', margin: '10px 0' }}>
                       {selectedCourseCodes.map((code) => (
-                        <span key={code} style={{ display: 'inline-flex', alignItems: 'center', gap: '7px', background: '#173d5a', border: '1px solid #287bb3', borderRadius: '18px', padding: '6px 10px' }}>
+                        <span key={code} style={{ display: 'inline-flex', alignItems: 'center', gap: '7px', background: '#3a4d7f', border: '1px solid #7695d2', borderRadius: '18px', padding: '6px 10px' }}>
                           {code}
                           <button type="button" aria-label={`Remove ${code}`} onClick={() => setSelectedCourseCodes((current) => current.filter((item) => item !== code))} style={{ border: 0, background: 'transparent', color: '#fff', cursor: 'pointer', padding: 0 }}>×</button>
                         </span>
@@ -1596,7 +1606,7 @@ export const App = () => {
                         </button>
                       ))}
                     {!courseOptionsLoading && courseSearch.length > 0 && !availableCourses.some((course) => course.code.includes(courseSearch)) && (
-                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px', padding: '10px', background: '#1d1d1e', borderRadius: '8px' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px', padding: '10px', background: '#2f385f', borderRadius: '8px' }}>
                         <span style={styles.muted}>No approved course found.</span>
                         <button
                           type="button"
@@ -1718,17 +1728,17 @@ export const App = () => {
                 <button type="button" style={{ ...styles.card, cursor: 'pointer', textAlign: 'left', padding: '22px', display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: '9px', minHeight: '126px' }} onClick={() => { setAdminSection('faculty-requests'); void loadModeratorRequests(); }}>
                   <strong style={{ fontSize: '1.1rem' }}>Pending Faculty Requests</strong>
                   <span style={{ ...styles.muted, marginTop: '7px' }}>{moderatorRequests.length ? `${moderatorRequests.length} pending request(s)` : 'No pending requests'}</span>
-                  <span style={{ color: '#38aaff', marginTop: '10px' }}>Open requests →</span>
+                  <span style={{ color: '#b4d0ff', marginTop: '10px' }}>Open requests →</span>
                 </button>
                 <button type="button" style={{ ...styles.card, cursor: 'pointer', textAlign: 'left', padding: '22px', display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: '9px', minHeight: '126px' }} onClick={() => { setAdminSection('course-requests'); void loadModeratorCourseRequests(); void loadModeratorFacultyCourseRequests(); }}>
                   <strong style={{ fontSize: '1.1rem' }}>Pending Course Requests</strong>
                   <span style={{ ...styles.muted, marginTop: '7px' }}>{moderatorCourseRequests.length + moderatorFacultyCourseRequests.length ? `${moderatorCourseRequests.length + moderatorFacultyCourseRequests.length} pending request(s)` : 'No pending requests'}</span>
-                  <span style={{ color: '#38aaff', marginTop: '10px' }}>Open requests →</span>
+                  <span style={{ color: '#b4d0ff', marginTop: '10px' }}>Open requests →</span>
                 </button>
                 <button type="button" style={{ ...styles.card, cursor: 'pointer', textAlign: 'left', padding: '22px', display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: '9px', minHeight: '126px' }} onClick={() => { setAdminSection('faculties'); void loadAllFacultyForModeration(); }}>
                   <strong style={{ fontSize: '1.1rem' }}>Edit Faculties</strong>
                   <span style={{ ...styles.muted, marginTop: '7px' }}>{allFacultyForModeration.length} faculty member(s) in directory</span>
-                  <span style={{ color: '#38aaff', marginTop: '10px' }}>Browse faculty →</span>
+                  <span style={{ color: '#b4d0ff', marginTop: '10px' }}>Browse faculty →</span>
                 </button>
               </div>
             )}
@@ -1850,7 +1860,7 @@ export const App = () => {
                           {(request.courseCodes ?? []).length > 0 ? (
                             <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
                               {request.courseCodes!.map((code) => (
-                                <span key={code} style={{ background: '#173d5a', border: '1px solid #287bb3', color: '#d6edff', borderRadius: '14px', padding: '4px 9px', fontSize: '0.85rem' }}>{code}</span>
+                                <span key={code} style={{ background: '#3a4d7f', border: '1px solid #7695d2', color: '#f2f6ff', borderRadius: '14px', padding: '4px 9px', fontSize: '0.85rem' }}>{code}</span>
                               ))}
                             </div>
                           ) : (
@@ -1911,7 +1921,7 @@ export const App = () => {
                         <form
                           onSubmit={approveRequest}
                           style={{
-                            borderTop: '1px solid #444',
+                            borderTop: '1px solid #56618d',
                             paddingTop: '15px',
                             display: 'grid',
                             gap: '13px',
@@ -1998,7 +2008,7 @@ export const App = () => {
                             {approvalCourseCodes.length > 0 && (
                               <div style={{ display: 'flex', flexWrap: 'wrap', gap: '7px' }}>
                                 {approvalCourseCodes.map((code) => (
-                                  <span key={code} style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', background: '#173d5a', border: '1px solid #287bb3', borderRadius: '16px', padding: '5px 9px' }}>
+                                  <span key={code} style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', background: '#3a4d7f', border: '1px solid #7695d2', borderRadius: '16px', padding: '5px 9px' }}>
                                     {code}
                                     <button type="button" onClick={() => setApprovalCourseCodes((current) => current.filter((item) => item !== code))} style={{ border: 0, background: 'transparent', color: '#fff', cursor: 'pointer', padding: 0 }} aria-label={`Remove ${code}`}>×</button>
                                   </span>
@@ -2051,7 +2061,7 @@ export const App = () => {
                       {isRejecting && (
                         <div
                           style={{
-                            borderTop: '1px solid #444',
+                            borderTop: '1px solid #56618d',
                             paddingTop: '15px',
                             display: 'grid',
                             gap: '12px',
@@ -2148,7 +2158,7 @@ export const App = () => {
 
             {adminSection === 'faculties' && (
               <>
-            <div style={{ borderTop: '1px solid #444', marginTop: '30px', paddingTop: '24px' }}>
+            <div style={{ borderTop: '1px solid #56618d', marginTop: '30px', paddingTop: '24px' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px', marginBottom: '16px' }}>
                 <h2 style={{ margin: 0 }}>Manage Faculty ({allFacultyForModeration.length})</h2>
                 <button type="button" style={{ ...styles.secondaryButton, padding: '8px 12px' }} onClick={() => void loadAllFacultyForModeration()} disabled={facultyManagementLoading}>
@@ -2170,7 +2180,7 @@ export const App = () => {
                     <button type="button" style={{ ...styles.secondaryButton, padding: '7px 12px' }} onClick={() => openFacultyEditor(record)}>Edit</button>
                   </div>
                   {editingFacultyId === record.id && (
-                    <form onSubmit={saveFacultyEdit} style={{ display: 'grid', gap: '10px', borderTop: '1px solid #444', paddingTop: '12px' }}>
+                    <form onSubmit={saveFacultyEdit} style={{ display: 'grid', gap: '10px', borderTop: '1px solid #56618d', paddingTop: '12px' }}>
                       <label style={styles.label}>First Name *</label>
                       <input style={styles.input} value={editFirstName} onChange={(event) => setEditFirstName(event.target.value)} maxLength={60} required />
                       <label style={styles.label}>Middle Name</label>
@@ -2185,7 +2195,7 @@ export const App = () => {
                       <input style={styles.input} value={editCourseSearch} onChange={(event) => setEditCourseSearch(event.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 7))} placeholder="Search approved course codes..." maxLength={7} />
                       <div style={{ display: 'flex', flexWrap: 'wrap', gap: '7px' }}>
                         {editCourseCodes.map((code) => (
-                          <span key={code} style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', background: '#173d5a', border: '1px solid #287bb3', borderRadius: '15px', padding: '5px 9px' }}>
+                          <span key={code} style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', background: '#3a4d7f', border: '1px solid #7695d2', borderRadius: '15px', padding: '5px 9px' }}>
                             {code}
                             <button type="button" onClick={() => setEditCourseCodes((current) => current.filter((item) => item !== code))} style={{ border: 0, background: 'transparent', color: '#fff', cursor: 'pointer' }}>×</button>
                           </span>
@@ -2210,7 +2220,7 @@ export const App = () => {
 
             {adminSection === 'course-requests' && (
               <>
-            <div style={{ borderTop: '1px solid #444', marginTop: '30px', paddingTop: '24px' }}>
+            <div style={{ borderTop: '1px solid #56618d', marginTop: '30px', paddingTop: '24px' }}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', marginBottom: '16px' }}>
                 <h2 style={{ margin: 0 }}>Course Requests ({moderatorCourseRequests.length})</h2>
                 <button
@@ -2277,7 +2287,7 @@ export const App = () => {
                     </button>
                   </div>
                   {courseRejectId === request.id && (
-                    <div style={{ borderTop: '1px solid #444', paddingTop: '12px', display: 'grid', gap: '10px' }}>
+                    <div style={{ borderTop: '1px solid #56618d', paddingTop: '12px', display: 'grid', gap: '10px' }}>
                       <label style={styles.label}>Rejection Reason</label>
                       <select style={styles.input} value={courseRejectReason} onChange={(event) => setCourseRejectReason(event.target.value)}>
                         <option value="">Select a reason</option>
