@@ -969,6 +969,7 @@ export const App = () => {
               Search for a faculty member or filter by school.
             </p>
             <div
+              className="directory-actions"
               style={{
                 display: 'flex',
                 flexWrap: 'wrap',
@@ -992,7 +993,7 @@ export const App = () => {
               </button>
             </div>
 
-            <div style={{ display: 'grid', gap: '14px' }}>
+            <div className="directory-filters" style={{ display: 'grid', gap: '14px' }}>
               <input
                 type="search"
                 placeholder="Search faculty by name..."
@@ -1025,7 +1026,7 @@ export const App = () => {
               </select>
             </div>
 
-            <div style={{ marginTop: '26px' }}>
+            <div className="directory-results" style={{ marginTop: '26px' }}>
               {loading && (
                 <p style={{ color: '#c6cde2', textAlign: 'center' }}>
                   Loading faculty...
@@ -1205,7 +1206,7 @@ export const App = () => {
               ← Back to Faculty List
             </button>
 
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', marginBottom: '8px' }}>
+            <div className="faculty-profile-heading" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', marginBottom: '8px' }}>
               <h1 style={{ ...styles.title, margin: 0, minWidth: 0, overflowWrap: 'anywhere' }}>{getFullName(selectedFaculty)}</h1>
               <button
                 type="button"
@@ -1730,18 +1731,18 @@ export const App = () => {
             </p>
 
             {adminSection === 'menu' && (
-              <div style={{ display: 'grid', gap: '14px', marginTop: '22px' }}>
-                <button type="button" style={{ ...styles.card, cursor: 'pointer', textAlign: 'left', padding: '22px', display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: '9px', minHeight: '126px' }} onClick={() => { setAdminSection('faculty-requests'); void loadModeratorRequests(); }}>
+              <div className="admin-menu-grid" style={{ display: 'grid', gap: '14px', marginTop: '22px' }}>
+                <button type="button" className="admin-menu-card" style={{ ...styles.card, cursor: 'pointer', textAlign: 'left', padding: '22px', display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: '9px', minHeight: '126px' }} onClick={() => { setAdminSection('faculty-requests'); void loadModeratorRequests(); }}>
                   <strong style={{ fontSize: '1.1rem' }}>Pending Faculty Requests</strong>
                   <span style={{ ...styles.muted, marginTop: '7px' }}>{moderatorRequests.length ? `${moderatorRequests.length} pending request(s)` : 'No pending requests'}</span>
                   <span style={{ color: '#b4d0ff', marginTop: '10px' }}>Open requests →</span>
                 </button>
-                <button type="button" style={{ ...styles.card, cursor: 'pointer', textAlign: 'left', padding: '22px', display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: '9px', minHeight: '126px' }} onClick={() => { setAdminSection('course-requests'); void loadModeratorCourseRequests(); void loadModeratorFacultyCourseRequests(); }}>
+                <button type="button" className="admin-menu-card" style={{ ...styles.card, cursor: 'pointer', textAlign: 'left', padding: '22px', display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: '9px', minHeight: '126px' }} onClick={() => { setAdminSection('course-requests'); void loadModeratorCourseRequests(); void loadModeratorFacultyCourseRequests(); }}>
                   <strong style={{ fontSize: '1.1rem' }}>Pending Course Requests</strong>
                   <span style={{ ...styles.muted, marginTop: '7px' }}>{moderatorCourseRequests.length + moderatorFacultyCourseRequests.length ? `${moderatorCourseRequests.length + moderatorFacultyCourseRequests.length} pending request(s)` : 'No pending requests'}</span>
                   <span style={{ color: '#b4d0ff', marginTop: '10px' }}>Open requests →</span>
                 </button>
-                <button type="button" style={{ ...styles.card, cursor: 'pointer', textAlign: 'left', padding: '22px', display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: '9px', minHeight: '126px' }} onClick={() => { setAdminSection('faculties'); void loadAllFacultyForModeration(); }}>
+                <button type="button" className="admin-menu-card" style={{ ...styles.card, cursor: 'pointer', textAlign: 'left', padding: '22px', display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: '9px', minHeight: '126px' }} onClick={() => { setAdminSection('faculties'); void loadAllFacultyForModeration(); }}>
                   <strong style={{ fontSize: '1.1rem' }}>Edit Faculties</strong>
                   <span style={{ ...styles.muted, marginTop: '7px' }}>{allFacultyForModeration.length} faculty member(s) in directory</span>
                   <span style={{ color: '#b4d0ff', marginTop: '10px' }}>Browse faculty →</span>
