@@ -164,3 +164,6 @@ export type FacultyEditInput = {
   school: string;
   courseCodes: string[];
 };
+
+
+export type FacultyCourseTagRequest = { id: string; facultyId: string; facultyName: string; courseCodes: string[]; createdAt: number; submittedByUsername: string; };
