@@ -155,3 +155,12 @@ export type ModeratorCourseRequestsResponse = {
   requests: CourseRequest[];
   total: number;
 };
+
+
+export type FacultyEditInput = {
+  firstName: string;
+  middleName: string;
+  lastName: string;
+  school: string;
+  courseCodes: string[];
+};
