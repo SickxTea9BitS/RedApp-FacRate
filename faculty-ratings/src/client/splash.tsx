@@ -14,6 +14,7 @@ import type {
   ModeratorRequestsResponse,
   ModeratorStatusResponse,
   CourseRequest,
+  FacultyCourseTagRequest,
   CourseRequestSubmissionResponse,
   ModeratorCourseRequestsResponse,
 } from '../shared/api';
@@ -189,6 +190,13 @@ export const App = () => {
   const [facultyEditMessage, setFacultyEditMessage] = useState('');
   const [adminSection, setAdminSection] = useState<'menu' | 'faculty-requests' | 'course-requests' | 'faculties'>('menu');
   const [facultyAdminSearch, setFacultyAdminSearch] = useState('');
+  const [facultyCourseRequestCodes, setFacultyCourseRequestCodes] = useState<string[]>([]);
+  const [facultyCourseRequestSearch, setFacultyCourseRequestSearch] = useState('');
+  const [facultyCourseRequestMessage, setFacultyCourseRequestMessage] = useState('');
+  const [facultyCourseRequestError, setFacultyCourseRequestError] = useState('');
+  const [facultyCourseRequestBusy, setFacultyCourseRequestBusy] = useState(false);
+  const [moderatorFacultyCourseRequests, setModeratorFacultyCourseRequests] = useState<FacultyCourseTagRequest[]>([]);
+  const [moderatorFacultyCourseSelection, setModeratorFacultyCourseSelection] = useState<Record<string, string[]>>({});
 
   const [ratingSummary, setRatingSummary] = useState<FacultyRatingSummary | null>(null);
   const [ratingValues, setRatingValues] = useState<FacultyRatingValues>({
@@ -394,6 +402,60 @@ export const App = () => {
     setCourseRequestError('');
     setCourseRequestSuccess('');
     setCurrentView('course-request');
+  };
+
+
+  const loadModeratorFacultyCourseRequests = async () => {
+    try {
+      const response = await fetch('/api/mod/faculty-course-requests');
+      const result = await response.json() as { status: 'success'; requests: FacultyCourseTagRequest[] } | ApiErrorResponse;
+      if (!response.ok || result.status !== 'success') throw new Error(result.status === 'error' ? result.message : 'Unable to load faculty course requests.');
+      setModeratorFacultyCourseRequests(result.requests);
+      setModeratorFacultyCourseSelection((current) => {
+        const next = { ...current };
+        for (const request of result.requests) if (!next[request.id]) next[request.id] = [...request.courseCodes];
+        return next;
+      });
+    } catch (error) {
+      setCourseModerationError(error instanceof Error ? error.message : 'Unable to load faculty course requests.');
+    }
+  };
+
+  const submitFacultyCourseTagRequest = async () => {
+    if (!selectedFaculty || facultyCourseRequestCodes.length === 0) return;
+    setFacultyCourseRequestBusy(true);
+    setFacultyCourseRequestError('');
+    setFacultyCourseRequestMessage('');
+    try {
+      const response = await fetch('/api/faculty/' + encodeURIComponent(selectedFaculty.id) + '/course-requests', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ courseCodes: facultyCourseRequestCodes }),
+      });
+      const result = await response.json() as { status: 'success'; message: string } | ApiErrorResponse;
+      if (!response.ok || result.status !== 'success') throw new Error(result.status === 'error' ? result.message : 'Unable to submit request.');
+      setFacultyCourseRequestMessage(result.message);
+      setFacultyCourseRequestCodes([]);
+      setFacultyCourseRequestSearch('');
+    } catch (error) {
+      setFacultyCourseRequestError(error instanceof Error ? error.message : 'Unable to submit request.');
+    } finally { setFacultyCourseRequestBusy(false); }
+  };
+
+  const moderateFacultyCourseTagRequest = async (request: FacultyCourseTagRequest, approve: boolean) => {
+    const selected = moderatorFacultyCourseSelection[request.id] ?? [];
+    try {
+      const response = await fetch('/api/mod/faculty-course-requests/' + encodeURIComponent(request.id) + (approve ? '/approve' : '/reject'), {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        ...(approve ? { body: JSON.stringify({ courseCodes: selected }) } : {}),
+      });
+      const result = await response.json() as ModerationActionResponse;
+      if (!response.ok || result.status !== 'success') throw new Error(result.status === 'error' ? result.message : 'Unable to process request.');
+      setCourseModerationMessage(result.message);
+      await loadModeratorFacultyCourseRequests();
+      await loadModeratorCourseRequests();
+    } catch (error) {
+      setCourseModerationError(error instanceof Error ? error.message : 'Unable to process request.');
+    }
   };
 
   const loadModeratorCourseRequests = async () => {
@@ -612,6 +674,7 @@ export const App = () => {
     setCustomReason('');
     void loadModeratorRequests();
     void loadModeratorCourseRequests();
+    void loadModeratorFacultyCourseRequests();
     void loadAllFacultyForModeration();
   };
 
@@ -1109,6 +1172,22 @@ export const App = () => {
                 <span key={code} style={{ background: '#173d5a', border: '1px solid #287bb3', color: '#d6edff', borderRadius: '14px', padding: '5px 10px', fontSize: '0.85rem' }}>{code}</span>
               )) : <span style={styles.muted}>No courses assigned</span>}
             </div>
+            <div style={{ margin: '0 0 20px', display: 'grid', gap: '10px' }}>
+              <button type="button" style={{ ...styles.secondaryButton, justifySelf: 'start', padding: '7px 13px' }} onClick={() => { setFacultyCourseRequestCodes([]); setFacultyCourseRequestSearch(''); setFacultyCourseRequestError(''); setFacultyCourseRequestMessage(''); void loadAvailableCourses(); }}>
+                Request Course(s) +
+              </button>
+              {facultyCourseRequestMessage && <p role="status" style={{ color: '#8de0ad', margin: 0 }}>{facultyCourseRequestMessage}</p>}
+              {facultyCourseRequestError && <p role="alert" style={{ color: '#ffb3b3', margin: 0 }}>{facultyCourseRequestError}</p>}
+              <input style={styles.input} value={facultyCourseRequestSearch} onChange={(event) => setFacultyCourseRequestSearch(event.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 7))} placeholder="Search approved course codes..." maxLength={7} />
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                {facultyCourseRequestCodes.map((code) => <button key={code} type="button" style={styles.secondaryButton} onClick={() => setFacultyCourseRequestCodes((current) => current.filter((item) => item !== code))}>{code} ×</button>)}
+              </div>
+              {availableCourses.filter((course) => !(selectedFaculty.courseCodes ?? []).includes(course.code) && !facultyCourseRequestCodes.includes(course.code)).filter((course) => !facultyCourseRequestSearch || course.code.includes(facultyCourseRequestSearch)).slice(0, 8).map((course) => (
+                <button key={course.code} type="button" style={{ ...styles.secondaryButton, textAlign: 'left', padding: '8px 12px' }} onClick={() => setFacultyCourseRequestCodes((current) => [...current, course.code])}>+ {course.code}</button>
+              ))}
+              <button type="button" style={styles.button} onClick={() => void submitFacultyCourseTagRequest()} disabled={facultyCourseRequestBusy || facultyCourseRequestCodes.length === 0}>{facultyCourseRequestBusy ? 'Submitting...' : 'Submit Course Request'}</button>
+            </div>
+
 
             {ratingLoading && <p style={styles.muted}>Loading ratings...</p>}
             {ratingError && (
@@ -2095,6 +2174,28 @@ export const App = () => {
               {courseModerationMessage && <div role="status" style={{ color: '#a5edc1', marginBottom: '12px' }}>{courseModerationMessage}</div>}
               {courseModerationError && <div role="alert" style={{ color: '#ffb3b3', marginBottom: '12px' }}>{courseModerationError}</div>}
               {courseModerationLoading && <p style={styles.muted}>Loading course requests...</p>}
+              {moderatorFacultyCourseRequests.length > 0 && (
+                <div style={{ display: 'grid', gap: '10px', marginBottom: '18px' }}>
+                  <h3>Faculty Course Tag Requests ({moderatorFacultyCourseRequests.length})</h3>
+                  {moderatorFacultyCourseRequests.map((request) => (
+                    <article key={request.id} style={{ ...styles.card, display: 'grid', gap: '10px' }}>
+                      <strong>{request.facultyName}</strong>
+                      <span style={styles.muted}>Requested by u/{request.submittedByUsername}</span>
+                      {request.courseCodes.map((code) => (
+                        <label key={code} style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                          <input type="checkbox" checked={(moderatorFacultyCourseSelection[request.id] ?? request.courseCodes).includes(code)} onChange={(event) => setModeratorFacultyCourseSelection((current) => ({ ...current, [request.id]: event.target.checked ? [...(current[request.id] ?? request.courseCodes), code] : (current[request.id] ?? request.courseCodes).filter((item) => item !== code) }))} />
+                          {code}
+                        </label>
+                      ))}
+                      <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                        <button type="button" style={{ ...styles.button, backgroundColor: '#23834c' }} onClick={() => void moderateFacultyCourseTagRequest(request, true)}>Approve Selected</button>
+                        <button type="button" style={{ ...styles.secondaryButton, borderColor: '#d04444', color: '#ff7777' }} onClick={() => void moderateFacultyCourseTagRequest(request, false)}>Reject Request</button>
+                      </div>
+                    </article>
+                  ))}
+                </div>
+              )}
+
               {!courseModerationLoading && moderatorCourseRequests.length === 0 && (
                 <p style={styles.muted}>No pending course requests.</p>
               )}
