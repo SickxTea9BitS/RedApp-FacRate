@@ -1,3 +1,4 @@
+@import url('https://fonts.googleapis.com/css2?family=Redaction+10&display=swap');
 @import 'tailwindcss';
 
 .rating-slider {
@@ -520,4 +521,13 @@ textarea:focus {
   .faculty-profile-heading {
     align-items: flex-start !important;
   }
+}
+
+
+.app-display-title {
+  font-family: 'Redaction 10', Georgia, serif !important;
+  font-size: clamp(2.2rem, 5vw, 3.2rem) !important;
+  font-weight: 400 !important;
+  letter-spacing: -0.02em !important;
+  line-height: 1.08 !important;
 }
