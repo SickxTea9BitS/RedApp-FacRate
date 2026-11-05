@@ -9,16 +9,32 @@ const Preview = () => {
   const [error, setError] = useState('');
 
   useEffect(() => {
+    if (!opening) return;
+
+    const resetOpeningState = () => {
+      setOpening(false);
+      setError('');
+    };
+
     const resetLauncher = () => {
       if (getWebViewMode() === 'inline') {
-        setOpening(false);
-        setError('');
+        resetOpeningState();
       }
     };
 
+    const fallbackTimeout = window.setTimeout(resetOpeningState, 2500);
+
     window.addEventListener('focus', resetLauncher);
-    return () => window.removeEventListener('focus', resetLauncher);
-  }, []);
+    window.addEventListener('pageshow', resetLauncher);
+    document.addEventListener('visibilitychange', resetLauncher);
+
+    return () => {
+      window.clearTimeout(fallbackTimeout);
+      window.removeEventListener('focus', resetLauncher);
+      window.removeEventListener('pageshow', resetLauncher);
+      document.removeEventListener('visibilitychange', resetLauncher);
+    };
+  }, [opening]);
 
   const openFacultyRatings = (event: MouseEvent<HTMLButtonElement>) => {
     setOpening(true);
