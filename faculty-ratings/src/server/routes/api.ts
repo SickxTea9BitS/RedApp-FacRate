@@ -13,6 +13,7 @@ import type {
   ModerationActionResponse,
   CourseRecord,
   CourseRequest,
+  FacultyCourseTagRequest,
   CourseListResponse,
   CourseRequestSubmissionResponse,
   ModeratorCourseRequestsResponse,
@@ -26,6 +27,7 @@ const FACULTY_HASH_KEY = 'faculty:records';
 const REQUESTS_HASH_KEY = 'faculty:requests';
 const COURSES_HASH_KEY = 'courses:records';
 const COURSE_REQUESTS_HASH_KEY = 'courses:requests';
+const FACULTY_COURSE_TAG_REQUESTS_HASH_KEY = 'faculty:course-tag-requests';
 const COURSE_CODE_PATTERN = /^[A-Z]{3}[0-9]{4}$/;
 
 const VALID_SCHOOLS = [
@@ -635,6 +637,92 @@ api.put('/mod/faculty/:id', async (c) => {
   } catch (error) {
     console.error('Faculty edit error:', error);
     return c.json<ApiErrorResponse>({ status: 'error', message: 'Unable to update faculty details.' }, 500);
+  }
+});
+
+
+api.post('/faculty/:id/course-requests', async (c) => {
+  try {
+    const userId = context.userId;
+    const username = await reddit.getCurrentUsername();
+    if (!userId || !username) return c.json<ApiErrorResponse>({ status: 'error', message: 'Log in to request course tags.' }, 401);
+    const facultyId = c.req.param('id');
+    const storedFaculty = await redis.hGet(FACULTY_HASH_KEY, facultyId);
+    if (!storedFaculty) return c.json<ApiErrorResponse>({ status: 'error', message: 'Faculty member not found.' }, 404);
+    const facultyRecord = JSON.parse(storedFaculty) as FacultyRecord;
+    const body = await c.req.json<{ courseCodes?: unknown }>();
+    if (!Array.isArray(body.courseCodes) || body.courseCodes.length === 0 || body.courseCodes.length > 20) return c.json<ApiErrorResponse>({ status: 'error', message: 'Select between 1 and 20 courses.' }, 400);
+    const courseCodes: string[] = [];
+    for (const value of body.courseCodes) {
+      if (typeof value !== 'string') return c.json<ApiErrorResponse>({ status: 'error', message: 'Invalid course selection.' }, 400);
+      const code = value.trim().toUpperCase();
+      if (!COURSE_CODE_PATTERN.test(code) || courseCodes.includes(code)) return c.json<ApiErrorResponse>({ status: 'error', message: 'Course selections must be valid and unique.' }, 400);
+      courseCodes.push(code);
+    }
+    const approvedCourses = await redis.hGetAll(COURSES_HASH_KEY);
+    for (const code of courseCodes) if (!Object.prototype.hasOwnProperty.call(approvedCourses, code)) return c.json<ApiErrorResponse>({ status: 'error', message: code + ' is not an approved course.' }, 400);
+    const pending = await redis.hGetAll(FACULTY_COURSE_TAG_REQUESTS_HASH_KEY);
+    const duplicate = Object.values(pending).some((value) => {
+      try { const request = JSON.parse(value) as FacultyCourseTagRequest; return request.facultyId === facultyId && request.submittedByUsername === username && request.courseCodes.some((code) => courseCodes.includes(code)); } catch { return false; }
+    });
+    if (duplicate) return c.json<ApiErrorResponse>({ status: 'error', message: 'You already have a pending course request for this faculty member.' }, 409);
+    const id = randomUUID();
+    const request: FacultyCourseTagRequest = { id, facultyId, facultyName: getFullName(facultyRecord), courseCodes, createdAt: Date.now(), submittedByUsername: username };
+    await redis.hSet(FACULTY_COURSE_TAG_REQUESTS_HASH_KEY, { [id]: JSON.stringify(request) });
+    return c.json({ status: 'success' as const, message: 'Your course tag request has been sent to the moderators.' });
+  } catch (error) {
+    console.error('Faculty course tag request error:', error);
+    return c.json<ApiErrorResponse>({ status: 'error', message: 'Unable to submit course tag request.' }, 500);
+  }
+});
+
+api.get('/mod/faculty-course-requests', async (c) => {
+  try {
+    if (!(await getModerator())) return c.json<ApiErrorResponse>({ status: 'error', message: 'Moderator permissions are required.' }, 403);
+    const stored = await redis.hGetAll(FACULTY_COURSE_TAG_REQUESTS_HASH_KEY);
+    const requests = Object.values(stored).flatMap((value) => { try { return [JSON.parse(value) as FacultyCourseTagRequest]; } catch { return []; } }).sort((a, b) => a.createdAt - b.createdAt);
+    return c.json({ status: 'success' as const, requests, total: requests.length });
+  } catch (error) {
+    console.error('Faculty course tag request list error:', error);
+    return c.json<ApiErrorResponse>({ status: 'error', message: 'Unable to load faculty course tag requests.' }, 500);
+  }
+});
+
+api.post('/mod/faculty-course-requests/:id/approve', async (c) => {
+  try {
+    if (!(await getModerator())) return c.json<ApiErrorResponse>({ status: 'error', message: 'Moderator permissions are required.' }, 403);
+    const id = c.req.param('id');
+    const stored = await redis.hGet(FACULTY_COURSE_TAG_REQUESTS_HASH_KEY, id);
+    if (!stored) return c.json<ApiErrorResponse>({ status: 'error', message: 'Request not found.' }, 404);
+    const request = JSON.parse(stored) as FacultyCourseTagRequest;
+    const body = await c.req.json<{ courseCodes?: unknown }>();
+    if (!Array.isArray(body.courseCodes)) return c.json<ApiErrorResponse>({ status: 'error', message: 'Choose one or more requested courses to approve.' }, 400);
+    const selected = body.courseCodes.filter((value): value is string => typeof value === 'string');
+    if (!selected.length || selected.some((code) => !request.courseCodes.includes(code))) return c.json<ApiErrorResponse>({ status: 'error', message: 'Choose at least one valid requested course.' }, 400);
+    const storedFaculty = await redis.hGet(FACULTY_HASH_KEY, request.facultyId);
+    if (!storedFaculty) return c.json<ApiErrorResponse>({ status: 'error', message: 'Faculty member no longer exists.' }, 404);
+    const facultyRecord = JSON.parse(storedFaculty) as FacultyRecord;
+    const updatedCodes = Array.from(new Set([...(facultyRecord.courseCodes ?? []), ...selected]));
+    await redis.hSet(FACULTY_HASH_KEY, { [request.facultyId]: JSON.stringify({ ...facultyRecord, courseCodes: updatedCodes }) });
+    await redis.hDel(FACULTY_COURSE_TAG_REQUESTS_HASH_KEY, id);
+    return c.json({ status: 'success' as const, message: 'Approved ' + selected.join(', ') + ' for ' + getFullName(facultyRecord) + '.' });
+  } catch (error) {
+    console.error('Faculty course tag approval error:', error);
+    return c.json<ApiErrorResponse>({ status: 'error', message: 'Unable to approve course tag request.' }, 500);
+  }
+});
+
+api.post('/mod/faculty-course-requests/:id/reject', async (c) => {
+  try {
+    if (!(await getModerator())) return c.json<ApiErrorResponse>({ status: 'error', message: 'Moderator permissions are required.' }, 403);
+    const id = c.req.param('id');
+    const stored = await redis.hGet(FACULTY_COURSE_TAG_REQUESTS_HASH_KEY, id);
+    if (!stored) return c.json<ApiErrorResponse>({ status: 'error', message: 'Request not found.' }, 404);
+    await redis.hDel(FACULTY_COURSE_TAG_REQUESTS_HASH_KEY, id);
+    return c.json({ status: 'success' as const, message: 'Faculty course tag request rejected.' });
+  } catch (error) {
+    console.error('Faculty course tag rejection error:', error);
+    return c.json<ApiErrorResponse>({ status: 'error', message: 'Unable to reject course tag request.' }, 500);
   }
 });
 
