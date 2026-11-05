@@ -17,12 +17,7 @@ const Preview = () => {
     };
 
     window.addEventListener('focus', resetLauncher);
-    window.addEventListener('pageshow', resetLauncher);
-
-    return () => {
-      window.removeEventListener('focus', resetLauncher);
-      window.removeEventListener('pageshow', resetLauncher);
-    };
+    return () => window.removeEventListener('focus', resetLauncher);
   }, []);
 
   const openFacultyRatings = (event: MouseEvent<HTMLButtonElement>) => {
@@ -32,12 +27,14 @@ const Preview = () => {
     try {
       void requestExpandedMode(event.nativeEvent, 'expanded').catch((cause: unknown) => {
         console.error('Unable to open Faculty Ratings:', cause);
-        setError('Unable to open Faculty Ratings. Please try again.');
+        const detail = cause instanceof Error ? cause.message : String(cause);
+        setError(`Unable to open Faculty Ratings. ${detail}`);
         setOpening(false);
       });
     } catch (cause) {
       console.error('Unable to open Faculty Ratings:', cause);
-      setError('Unable to open Faculty Ratings. Please try again.');
+      const detail = cause instanceof Error ? cause.message : String(cause);
+      setError(`Unable to open Faculty Ratings. ${detail}`);
       setOpening(false);
     }
   };
@@ -48,7 +45,7 @@ const Preview = () => {
       style={{
         boxSizing: 'border-box',
         width: '100%',
-        padding: '20px 22px',
+        padding: '14px 16px',
         borderRadius: '12px',
         background: '#1a1a1b',
         color: '#fff',
@@ -57,9 +54,9 @@ const Preview = () => {
         touchAction: 'pan-y',
       }}
     >
-      <div style={{ fontSize: '2rem', marginBottom: '8px' }}>🎓</div>
-      <h1 style={{ fontSize: '1.5rem', margin: '0 0 8px' }}>Faculty Ratings</h1>
-      <p style={{ color: '#aaa', margin: '0 auto 18px', lineHeight: 1.5, maxWidth: '420px' }}>
+      <div style={{ fontSize: '1.5rem', marginBottom: '4px' }}>🎓</div>
+      <h1 style={{ fontSize: '1.25rem', margin: '0 0 6px' }}>Faculty Ratings</h1>
+      <p style={{ color: '#aaa', fontSize: '0.9rem', margin: '0 auto 12px', lineHeight: 1.35, maxWidth: '420px' }}>
         Search faculty members, explore student ratings, and submit faculty or course requests.
       </p>
       <button
@@ -67,12 +64,12 @@ const Preview = () => {
         onClick={openFacultyRatings}
         disabled={opening}
         style={{
-          padding: '12px 22px',
+          padding: '10px 18px',
           borderRadius: '8px',
           border: 'none',
           background: '#0079D3',
           color: '#fff',
-          fontSize: '1rem',
+          fontSize: '0.95rem',
           fontWeight: 700,
           cursor: opening ? 'wait' : 'pointer',
           opacity: opening ? 0.75 : 1,
@@ -80,7 +77,7 @@ const Preview = () => {
       >
         {opening ? 'Opening...' : 'Launch App'}
       </button>
-      {error && <p role="alert" style={{ color: '#ffb3b3', margin: '12px 0 0' }}>{error}</p>}
+      {error && <p role="alert" style={{ color: '#ffb3b3', fontSize: '0.85rem', margin: '10px 0 0' }}>{error}</p>}
     </main>
   );
 };
