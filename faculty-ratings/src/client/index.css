@@ -105,3 +105,14 @@
   font-weight: 700;
   text-align: right;
 }
+
+html,
+body,
+#root {
+  min-height: 100%;
+}
+
+body {
+  margin: 0;
+  -webkit-overflow-scrolling: touch;
+}
