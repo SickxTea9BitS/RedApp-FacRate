@@ -328,8 +328,8 @@ export const App = () => {
     { key: 'teaching', label: 'Teaching' },
     { key: 'internalMarking', label: 'Internal Marking' },
     { key: 'examEvaluation', label: 'Exam Evaluation' },
-    { key: 'overallRecommendation', label: 'Overall Recommendation' },
     { key: 'classAverage', label: 'Class Average' },
+    { key: 'overallRecommendation', label: 'Overall Recommendation' },
   ];
 
   const openFacultyList = (mode: RatingMode) => {
