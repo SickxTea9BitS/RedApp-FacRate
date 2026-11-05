@@ -1,4 +1,3 @@
-
 export type FacultyRecord = {
   id: string;
   firstName: string;
@@ -20,6 +19,8 @@ export type FacultyRequest = {
   status: 'pending' | 'approved' | 'rejected';
   rejectionReason?: string;
   customReason?: string;
+  reviewedAt?: number;
+  reviewedByUsername?: string;
 };
 
 export type FacultyListResponse = {
@@ -38,6 +39,24 @@ export type FacultyRequestSubmissionResponse =
       status: 'success';
       message: string;
       requestId: string;
+    }
+  | ApiErrorResponse;
+
+export type ModeratorStatusResponse = {
+  status: 'success';
+  isModerator: boolean;
+};
+
+export type ModeratorRequestsResponse = {
+  status: 'success';
+  requests: FacultyRequest[];
+  total: number;
+};
+
+export type ModerationActionResponse =
+  | {
+      status: 'success';
+      message: string;
     }
   | ApiErrorResponse;
 

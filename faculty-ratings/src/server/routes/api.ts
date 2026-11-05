@@ -1,4 +1,3 @@
-
 import { randomUUID } from 'node:crypto';
 import { Hono } from 'hono';
 import { context, redis, reddit } from '@devvit/web/server';
@@ -11,6 +10,9 @@ import type {
   FacultyRequestSubmissionResponse,
   IncrementResponse,
   InitResponse,
+  ModerationActionResponse,
+  ModeratorRequestsResponse,
+  ModeratorStatusResponse,
 } from '../../shared/api';
 
 export const api = new Hono();
@@ -29,6 +31,13 @@ const VALID_SCHOOLS = [
   'SA',
 ];
 
+const REJECTION_REASONS = [
+  'Duplicate Request',
+  'Already Exists',
+  'Invalid',
+  'Custom',
+];
+
 const normalizeName = (value: string) =>
   value.normalize('NFKC').trim().replace(/\s+/g, ' ').toLowerCase();
 
@@ -40,6 +49,49 @@ const getFullName = (record: {
   [record.firstName, record.middleName, record.lastName]
     .filter(Boolean)
     .join(' ');
+
+const isDuplicateFaculty = (
+  records: Record<string, string>,
+  request: FacultyRequest
+) => {
+  return Object.values(records).some((value) => {
+    try {
+      const record = JSON.parse(value) as FacultyRecord;
+
+      return (
+        record.school === request.school &&
+        normalizeName(getFullName(record)) ===
+          normalizeName(getFullName(request))
+      );
+    } catch {
+      return false;
+    }
+  });
+};
+
+const getModerator = async () => {
+  try {
+    const user = await reddit.getCurrentUser();
+
+    if (!user) {
+      return null;
+    }
+
+    const subreddit = await reddit.getCurrentSubreddit();
+    const permissions = await user.getModPermissionsForSubreddit(
+      subreddit.name
+    );
+
+    if (!permissions || permissions.length === 0) {
+      return null;
+    }
+
+    return user;
+  } catch (error) {
+    console.error('Moderator permission check failed:', error);
+    return null;
+  }
+};
 
 api.get('/faculty', async (c) => {
   try {
@@ -84,9 +136,7 @@ api.get('/faculty', async (c) => {
 
         return matchesSearch && matchesSchool;
       })
-      .sort((a, b) =>
-        getFullName(a).localeCompare(getFullName(b))
-      );
+      .sort((a, b) => getFullName(a).localeCompare(getFullName(b)));
 
     return c.json<FacultyListResponse>({
       status: 'success',
@@ -213,7 +263,8 @@ api.post('/requests', async (c) => {
           return c.json<ApiErrorResponse>(
             {
               status: 'error',
-              message: 'A pending request already exists for this faculty member.',
+              message:
+                'A pending request already exists for this faculty member.',
             },
             409
           );
@@ -253,6 +304,297 @@ api.post('/requests', async (c) => {
       {
         status: 'error',
         message: 'Unable to submit your request. Please try again.',
+      },
+      500
+    );
+  }
+});
+
+api.get('/mod/status', async (c) => {
+  const user = await getModerator();
+
+  return c.json<ModeratorStatusResponse>({
+    status: 'success',
+    isModerator: Boolean(user),
+  });
+});
+
+api.get('/mod/requests', async (c) => {
+  try {
+    const moderator = await getModerator();
+
+    if (!moderator) {
+      return c.json<ApiErrorResponse>(
+        {
+          status: 'error',
+          message: 'Moderator permissions are required.',
+        },
+        403
+      );
+    }
+
+    const storedRequests = await redis.hGetAll(REQUESTS_HASH_KEY);
+
+    const requests = Object.values(storedRequests)
+      .flatMap((value) => {
+        try {
+          const request = JSON.parse(value) as FacultyRequest;
+
+          if (
+            !request ||
+            typeof request.id !== 'string' ||
+            typeof request.firstName !== 'string' ||
+            typeof request.lastName !== 'string' ||
+            request.status !== 'pending'
+          ) {
+            return [];
+          }
+
+          return [request];
+        } catch {
+          return [];
+        }
+      })
+      .sort((a, b) => a.createdAt - b.createdAt);
+
+    return c.json<ModeratorRequestsResponse>({
+      status: 'success',
+      requests,
+      total: requests.length,
+    });
+  } catch (error) {
+    console.error('Moderator request list error:', error);
+
+    return c.json<ApiErrorResponse>(
+      {
+        status: 'error',
+        message: 'Unable to load pending requests.',
+      },
+      500
+    );
+  }
+});
+
+api.post('/mod/requests/:id/approve', async (c) => {
+  try {
+    const moderator = await getModerator();
+
+    if (!moderator) {
+      return c.json<ApiErrorResponse>(
+        {
+          status: 'error',
+          message: 'Moderator permissions are required.',
+        },
+        403
+      );
+    }
+
+    const requestId = c.req.param('id');
+
+    if (!requestId || requestId.length > 100) {
+      return c.json<ApiErrorResponse>(
+        {
+          status: 'error',
+          message: 'Invalid request ID.',
+        },
+        400
+      );
+    }
+
+    const storedRequest = await redis.hGet(REQUESTS_HASH_KEY, requestId);
+
+    if (!storedRequest) {
+      return c.json<ApiErrorResponse>(
+        {
+          status: 'error',
+          message: 'Faculty request not found.',
+        },
+        404
+      );
+    }
+
+    const request = JSON.parse(storedRequest) as FacultyRequest;
+
+    if (request.status !== 'pending') {
+      return c.json<ApiErrorResponse>(
+        {
+          status: 'error',
+          message: 'This request has already been reviewed.',
+        },
+        409
+      );
+    }
+
+    const facultyRecords = await redis.hGetAll(FACULTY_HASH_KEY);
+
+    if (isDuplicateFaculty(facultyRecords, request)) {
+      return c.json<ApiErrorResponse>(
+        {
+          status: 'error',
+          message:
+            'This faculty member already exists. Reject this request as Already Exists instead.',
+        },
+        409
+      );
+    }
+
+    const facultyRecord: FacultyRecord = {
+      id: request.id,
+      firstName: request.firstName,
+      middleName: request.middleName,
+      lastName: request.lastName,
+      school: request.school,
+      createdAt: Date.now(),
+    };
+
+    const updatedRequest: FacultyRequest = {
+      ...request,
+      status: 'approved',
+      reviewedAt: Date.now(),
+      reviewedByUsername: moderator.username,
+    };
+
+    await redis.hSet(FACULTY_HASH_KEY, {
+      [facultyRecord.id]: JSON.stringify(facultyRecord),
+    });
+
+    await redis.hSet(REQUESTS_HASH_KEY, {
+      [requestId]: JSON.stringify(updatedRequest),
+    });
+
+    return c.json<ModerationActionResponse>({
+      status: 'success',
+      message: `${getFullName(request)} has been added to the faculty directory.`,
+    });
+  } catch (error) {
+    console.error('Faculty approval error:', error);
+
+    return c.json<ApiErrorResponse>(
+      {
+        status: 'error',
+        message: 'Unable to approve this request.',
+      },
+      500
+    );
+  }
+});
+
+api.post('/mod/requests/:id/reject', async (c) => {
+  try {
+    const moderator = await getModerator();
+
+    if (!moderator) {
+      return c.json<ApiErrorResponse>(
+        {
+          status: 'error',
+          message: 'Moderator permissions are required.',
+        },
+        403
+      );
+    }
+
+    const requestId = c.req.param('id');
+
+    if (!requestId || requestId.length > 100) {
+      return c.json<ApiErrorResponse>(
+        {
+          status: 'error',
+          message: 'Invalid request ID.',
+        },
+        400
+      );
+    }
+
+    const body = await c.req.json<{
+      reason?: unknown;
+      customReason?: unknown;
+    }>();
+
+    const reason =
+      typeof body.reason === 'string' ? body.reason.trim() : '';
+    const customReason =
+      typeof body.customReason === 'string'
+        ? body.customReason.trim()
+        : '';
+
+    if (!REJECTION_REASONS.includes(reason)) {
+      return c.json<ApiErrorResponse>(
+        {
+          status: 'error',
+          message: 'Select a valid rejection reason.',
+        },
+        400
+      );
+    }
+
+    if (reason === 'Custom' && !customReason) {
+      return c.json<ApiErrorResponse>(
+        {
+          status: 'error',
+          message: 'Please enter a custom rejection reason.',
+        },
+        400
+      );
+    }
+
+    if (customReason.length > 300) {
+      return c.json<ApiErrorResponse>(
+        {
+          status: 'error',
+          message: 'The custom reason cannot exceed 300 characters.',
+        },
+        400
+      );
+    }
+
+    const storedRequest = await redis.hGet(REQUESTS_HASH_KEY, requestId);
+
+    if (!storedRequest) {
+      return c.json<ApiErrorResponse>(
+        {
+          status: 'error',
+          message: 'Faculty request not found.',
+        },
+        404
+      );
+    }
+
+    const request = JSON.parse(storedRequest) as FacultyRequest;
+
+    if (request.status !== 'pending') {
+      return c.json<ApiErrorResponse>(
+        {
+          status: 'error',
+          message: 'This request has already been reviewed.',
+        },
+        409
+      );
+    }
+
+    const updatedRequest: FacultyRequest = {
+      ...request,
+      status: 'rejected',
+      rejectionReason: reason,
+      customReason: reason === 'Custom' ? customReason : undefined,
+      reviewedAt: Date.now(),
+      reviewedByUsername: moderator.username,
+    };
+
+    await redis.hSet(REQUESTS_HASH_KEY, {
+      [requestId]: JSON.stringify(updatedRequest),
+    });
+
+    return c.json<ModerationActionResponse>({
+      status: 'success',
+      message: 'Faculty request rejected.',
+    });
+  } catch (error) {
+    console.error('Faculty rejection error:', error);
+
+    return c.json<ApiErrorResponse>(
+      {
+        status: 'error',
+        message: 'Unable to reject this request.',
       },
       500
     );
