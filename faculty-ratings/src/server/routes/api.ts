@@ -3,7 +3,6 @@ import { Hono } from 'hono';
 import { context, redis, reddit } from '@devvit/web/server';
 import type {
   ApiErrorResponse,
-  DecrementResponse,
   FacultyListResponse,
   FacultyRecord,
   FacultyRequest,
@@ -649,7 +648,6 @@ api.post('/faculty/:id/course-requests', async (c) => {
     const storedFaculty = await redis.hGet(FACULTY_HASH_KEY, facultyId);
     if (!storedFaculty) return c.json<ApiErrorResponse>({ status: 'error', message: 'Faculty member not found.' }, 404);
     const facultyRecord = JSON.parse(storedFaculty) as FacultyRecord;
-    const alreadyAssigned = facultyRecord.courseCodes ?? [];
     const body = await c.req.json<{ courseCodes?: unknown }>();
     if (!Array.isArray(body.courseCodes) || body.courseCodes.length === 0 || body.courseCodes.length > 20) return c.json<ApiErrorResponse>({ status: 'error', message: 'Select between 1 and 20 courses.' }, 400);
     const courseCodes: string[] = [];
