@@ -5,6 +5,8 @@ export type FacultyRecord = {
   lastName: string;
   school: string;
   createdAt: number;
+  ratingCount?: number;
+  hasRated?: boolean;
 };
 
 export type FacultyRequest = {
