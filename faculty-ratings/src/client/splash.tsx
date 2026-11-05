@@ -167,6 +167,7 @@ export const App = () => {
     internalMarking: 50,
     examEvaluation: 50,
     overallRecommendation: 50,
+    classAverage: 50,
   });
   const [ratingLoading, setRatingLoading] = useState(false);
   const [ratingSubmitting, setRatingSubmitting] = useState(false);
@@ -328,6 +329,7 @@ export const App = () => {
     { key: 'internalMarking', label: 'Internal Marking' },
     { key: 'examEvaluation', label: 'Exam Evaluation' },
     { key: 'overallRecommendation', label: 'Overall Recommendation' },
+    { key: 'classAverage', label: 'Class Average' },
   ];
 
   const openFacultyList = (mode: RatingMode) => {
@@ -851,7 +853,7 @@ export const App = () => {
                   <div key={key}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '7px' }}>
                       <strong>{label}</strong>
-                      <strong>{value}%</strong>
+                      <strong>{key === 'classAverage' ? `${value} Marks` : `${value}%`}</strong>
                     </div>
                     <div
                       style={{
@@ -904,55 +906,72 @@ export const App = () => {
                 )}
                 {ratingSummary?.eligibility.eligible && !ratingSummary.eligibility.hasRated && (
                   <form onSubmit={submitFacultyRating} style={{ display: 'grid', gap: '18px' }}>
-                    {ratingLabels.map(({ key, label }) => (
-                      <div key={key}>
-                        <label style={{ ...styles.label, display: 'flex', justifyContent: 'space-between' }}>
-                          <span>{label}</span><span>{ratingValues[key]}%</span>
-                        </label>
-                        <input
-                          className="rating-slider"
-                          type="range"
-                          min="0"
-                          max="100"
-                          step="1"
-                          value={ratingValues[key]}
-                          onChange={(event) => setRatingValues((current) => ({ ...current, [key]: Number(event.target.value) }))}
-                          aria-label={label}
-                        />
-                        <div className="rating-legend">
-                          {(
-                            key === 'teaching'
+                    {ratingLabels.map(({ key, label }) => {
+                      const isTeaching = key === 'teaching';
+                      const isClassAverage = key === 'classAverage';
+                      const question =
+                        key === 'teaching'
+                          ? 'How would you rate their Teaching?'
+                          : key === 'internalMarking'
+                            ? 'How would you rate their Internal Marking evaluation based on what you feel?'
+                            : key === 'examEvaluation'
+                              ? 'How would you rate their exam evaluation?'
+                              : key === 'classAverage'
+                                ? "Select the Avg you think this faculty's class usually has out of 100"
+                                : 'Overall, would you recommend them?';
+                      const legends =
+                        key === 'teaching'
+                          ? [
+                              ['#111111', 'BLACK', 'It is hard to grasp what they teach'],
+                              ['#ff9800', 'ORANGE', 'Not good, but not bad either'],
+                              ['#4caf50', 'GREEN', 'Their teaching is pretty easy to grasp'],
+                            ]
+                          : key === 'internalMarking' || key === 'examEvaluation'
+                            ? [
+                                ['#111111', 'BLACK', 'Unnecessarily Strict evaluation'],
+                                ['#e53935', 'RED', 'Strict evaluation'],
+                                ['#ff9800', 'ORANGE', 'Fair evaluation'],
+                                ['#ffeb3b', 'YELLOW', 'Lenient evaluation'],
+                                ['#4caf50', 'GREEN', 'Free Marks'],
+                              ]
+                            : key === 'overallRecommendation'
                               ? [
-                                  ['#111111', '0–20%', 'Cannot understand the teaching'],
-                                  ['#e53935', '20–40%', 'Difficult to understand'],
-                                  ['#ff9800', '40–60%', 'Sometimes understandable'],
-                                  ['#ffeb3b', '60–80%', 'Generally understandable'],
-                                  ['#4caf50', '80–100%', 'Understand pretty well in class'],
+                                  ['#111111', 'BLACK', "It's better to drop the course"],
+                                  ['#e53935', 'RED', 'Only as a last option'],
+                                  ['#ff9800', 'ORANGE', 'Okay, not bad but not great either'],
+                                  ['#ffeb3b', 'YELLOW', 'Definitely good as second option'],
+                                  ['#4caf50', 'GREEN', 'Goated, would recommend for sure'],
                                 ]
-                              : key === 'internalMarking' || key === 'examEvaluation'
-                                ? [
-                                    ['#111111', '0–20%', 'Bad evaluation'],
-                                    ['#e53935', '20–40%', 'Poor evaluation'],
-                                    ['#ff9800', '40–60%', 'Fair evaluation'],
-                                    ['#ffeb3b', '60–80%', 'Good evaluation'],
-                                    ['#4caf50', '80–100%', 'Lenient evaluation'],
-                                  ]
-                                : [
-                                    ['#111111', '0–20%', 'Skipping the course would be better'],
-                                    ['#e53935', '20–40%', 'Only as a last option'],
-                                    ['#ff9800', '40–60%', 'Okay, not bad but not great'],
-                                    ['#ffeb3b', '60–80%', 'Definitely as a second option'],
-                                    ['#4caf50', '80–100%', 'Absolute GOAT'],
-                                  ]
-                          ).map(([color, range, description]) => (
-                            <div className="rating-legend-item" key={range}>
-                              <span className="rating-legend-swatch" style={{ backgroundColor: color }} />
-                              <span><strong>{range}</strong> — {description}</span>
+                              : [];
+                      return (
+                        <div key={key}>
+                          <label style={styles.label}>{question}</label>
+                          <div className="rating-value">
+                            {ratingValues[key]} {isClassAverage ? 'Marks' : '%'}
+                          </div>
+                          <input
+                            className={isTeaching ? 'rating-slider rating-slider-three' : 'rating-slider'}
+                            type="range"
+                            min="0"
+                            max="100"
+                            step="1"
+                            value={ratingValues[key]}
+                            onChange={(event) => setRatingValues((current) => ({ ...current, [key]: Number(event.target.value) }))}
+                            aria-label={question}
+                          />
+                          {legends.length > 0 && (
+                            <div className="rating-legend">
+                              {legends.map(([color, name, description]) => (
+                                <div className="rating-legend-item" key={name}>
+                                  <span className="rating-legend-swatch" style={{ backgroundColor: color }} />
+                                  <span><strong>{name}</strong> — {description}</span>
+                                </div>
+                              ))}
                             </div>
-                          ))}
+                          )}
                         </div>
-                      </div>
-                    ))}
+                      );
+                    })})}
                     <button type="submit" style={styles.button} disabled={ratingSubmitting}>
                       {ratingSubmitting ? 'Submitting...' : 'Submit Rating'}
                     </button>
