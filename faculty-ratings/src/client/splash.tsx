@@ -971,7 +971,7 @@ export const App = () => {
                           )}
                         </div>
                       );
-                    })})}
+                    })}
                     <button type="submit" style={styles.button} disabled={ratingSubmitting}>
                       {ratingSubmitting ? 'Submitting...' : 'Submit Rating'}
                     </button>
