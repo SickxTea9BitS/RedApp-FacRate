@@ -47,50 +47,54 @@ const styles = {
     backgroundColor: '#2b3258',
     color: '#ffffff',
     minHeight: '100vh',
-    padding: '28px 20px',
-    fontFamily: 'sans-serif',
+    padding: 'clamp(20px, 4vw, 44px) 20px',
+    fontFamily: 'Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
     boxSizing: 'border-box' as const,
   },
   container: {
     width: '100%',
-    maxWidth: '720px',
+    maxWidth: '860px',
     margin: '0 auto',
   },
   title: {
-    fontSize: '2rem',
-    marginBottom: '8px',
+    fontSize: 'clamp(2rem, 5vw, 2.65rem)',
+    fontWeight: 800,
+    letterSpacing: '-0.045em',
+    lineHeight: 1.12,
+    marginBottom: '12px',
   },
   subtitle: {
     color: '#c6cde2',
-    marginBottom: '28px',
-    lineHeight: 1.5,
+    marginBottom: '30px',
+    lineHeight: 1.65,
+    fontSize: '1.03rem',
   },
   button: {
-    padding: '12px 20px',
-    borderRadius: '8px',
-    border: 'none',
+    padding: '13px 22px',
+    borderRadius: '12px',
+    border: '1px solid #8bb8ff',
     backgroundColor: '#6ea8ff',
-    color: 'white',
+    color: '#172344',
     fontSize: '1rem',
     fontWeight: 'bold' as const,
     cursor: 'pointer',
   },
   secondaryButton: {
-    padding: '11px 20px',
-    borderRadius: '8px',
-    border: '1px solid #6ea8ff',
-    backgroundColor: 'transparent',
-    color: '#b4d0ff',
+    padding: '12px 21px',
+    borderRadius: '12px',
+    border: '1px solid #7185bd',
+    backgroundColor: '#343d68',
+    color: '#e8efff',
     fontSize: '1rem',
     fontWeight: 'bold' as const,
     cursor: 'pointer',
   },
   input: {
     width: '100%',
-    padding: '13px',
-    borderRadius: '8px',
-    border: '1px solid #56618d',
-    backgroundColor: '#343d68',
+    padding: '15px 16px',
+    borderRadius: '13px',
+    border: '1px solid #596795',
+    backgroundColor: '#252d50',
     color: 'white',
     fontSize: '1rem',
     boxSizing: 'border-box' as const,
@@ -99,8 +103,8 @@ const styles = {
   card: {
     backgroundColor: '#343d68',
     border: '1px solid #4a5687',
-    borderRadius: '10px',
-    padding: '16px',
+    borderRadius: '18px',
+    padding: '20px',
     textAlign: 'left' as const,
     color: 'white',
     width: '100%',
@@ -885,10 +889,11 @@ export const App = () => {
   };
 
   return (
-    <div style={styles.page}>
-      <main style={styles.container}>
+    <div className="app-page" style={styles.page}>
+      <main className="app-container" style={styles.container}>
         {currentView === 'home' && (
-          <section style={{ textAlign: 'center', paddingTop: '12vh' }}>
+          <section className="app-hero" style={{ textAlign: 'center', paddingTop: '8vh' }}>
+            <div className="app-eyebrow">VIT BHOPAL <span>•</span> STUDENT COMMUNITY</div>
             <img
               src="/vit-bhopal-logo.png"
               alt="VIT Bhopal University"
@@ -944,7 +949,7 @@ export const App = () => {
         )}
 
         {currentView === 'faculty' && (
-          <section>
+          <section className="app-screen app-screen-directory">
             <button
               onClick={goHome}
               style={{
@@ -1079,6 +1084,7 @@ export const App = () => {
                   {faculty.map((record) => (
                     <div
                       key={record.id}
+                      className="faculty-card"
                       style={{
                         ...styles.card,
                         display: 'flex',
@@ -1180,7 +1186,7 @@ export const App = () => {
 
 
         {currentView === 'faculty-detail' && selectedFaculty && (
-          <section>
+          <section className="app-screen app-screen-detail">
             <button
               onClick={() => {
                 setCurrentView('faculty');
@@ -1441,7 +1447,7 @@ export const App = () => {
         )}
 
         {currentView === 'request' && (
-          <section>
+          <section className="app-screen app-screen-form">
             <button
               onClick={() => setCurrentView('faculty')}
               style={{
@@ -1663,7 +1669,7 @@ export const App = () => {
 
         
         {currentView === 'course-request' && (
-          <section>
+          <section className="app-screen app-screen-form">
             <button
               onClick={goHome}
               style={{ ...styles.secondaryButton, padding: '8px 14px', marginBottom: '24px' }}
@@ -1705,7 +1711,7 @@ export const App = () => {
         )}
 
 {currentView === 'admin' && (
-          <section>
+          <section className="app-screen app-screen-admin">
             <button
               onClick={goHome}
               style={{
