@@ -320,7 +320,6 @@ api.post('/requests', async (c) => {
       middleName,
       lastName,
       school,
-      courseCodes: (request.courseCodes ?? []).filter((code) => Boolean(approvedCoursesForApproval[code])),
       createdAt: Date.now(),
       submittedByUsername: username,
       submittedByUserId: userId,
