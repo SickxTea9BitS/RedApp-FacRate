@@ -9,8 +9,8 @@
     "dir": "dist/client",
     "entrypoints": {
       "default": {
-        "inline": true,
-        "entry": "preview.html"
+        "entry": "preview.html",
+        "height": "short"
       },
       "game": {
         "entry": "game.html"
