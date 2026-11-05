@@ -11,6 +11,9 @@ import type {
   ModerationActionResponse,
   ModeratorRequestsResponse,
   ModeratorStatusResponse,
+  CourseRequest,
+  CourseRequestSubmissionResponse,
+  ModeratorCourseRequestsResponse,
 } from '../shared/api';
 import './index.css';
 
@@ -32,7 +35,7 @@ const REJECTION_REASONS = [
   'Custom',
 ];
 
-type View = 'home' | 'faculty' | 'faculty-detail' | 'request' | 'admin';
+type View = 'home' | 'faculty' | 'faculty-detail' | 'request' | 'course-request' | 'admin';
 type RatingMode = 'rate' | 'check';
 
 const styles = {
@@ -173,6 +176,20 @@ export const App = () => {
   const [ratingSubmitting, setRatingSubmitting] = useState(false);
   const [ratingError, setRatingError] = useState('');
   const [ratingMessage, setRatingMessage] = useState('');
+
+  const [courseCode, setCourseCode] = useState('');
+  const [courseRequestLoading, setCourseRequestLoading] = useState(false);
+  const [courseRequestError, setCourseRequestError] = useState('');
+  const [courseRequestSuccess, setCourseRequestSuccess] = useState('');
+  const [moderatorCourseRequests, setModeratorCourseRequests] = useState<CourseRequest[]>([]);
+  const [courseModerationLoading, setCourseModerationLoading] = useState(false);
+  const [courseModerationError, setCourseModerationError] = useState('');
+  const [courseModerationMessage, setCourseModerationMessage] = useState('');
+  const [courseModerationBusyId, setCourseModerationBusyId] = useState('');
+  const [courseRejectId, setCourseRejectId] = useState('');
+  const [courseRejectReason, setCourseRejectReason] = useState('');
+  const [courseCustomReason, setCourseCustomReason] = useState('');
+
 
 
 
@@ -340,6 +357,88 @@ export const App = () => {
     setCurrentView('faculty');
   };
 
+
+  const openCourseRequestForm = () => {
+    setCourseCode('');
+    setCourseRequestError('');
+    setCourseRequestSuccess('');
+    setCurrentView('course-request');
+  };
+
+  const loadModeratorCourseRequests = async () => {
+    setCourseModerationLoading(true);
+    setCourseModerationError('');
+    try {
+      const response = await fetch('/api/mod/course-requests');
+      const result = (await response.json()) as ModeratorCourseRequestsResponse | { status: 'error'; message: string };
+      if (!response.ok || result.status !== 'success') {
+        throw new Error(result.status === 'error' ? result.message : 'Unable to load course requests.');
+      }
+      setModeratorCourseRequests(result.requests);
+    } catch (error) {
+      setCourseModerationError(error instanceof Error ? error.message : 'Unable to load course requests.');
+    } finally {
+      setCourseModerationLoading(false);
+    }
+  };
+
+  const submitCourseRequest = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setCourseRequestError('');
+    setCourseRequestSuccess('');
+    const normalizedCode = courseCode.trim().toUpperCase();
+    if (!/^[A-Z]{3}[0-9]{4}$/.test(normalizedCode)) {
+      setCourseRequestError('Enter a valid course code: three letters followed by four digits (for example, MAT1001).');
+      return;
+    }
+    setCourseRequestLoading(true);
+    try {
+      const response = await fetch('/api/course-requests', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code: normalizedCode }),
+      });
+      const result = (await response.json()) as CourseRequestSubmissionResponse;
+      if (!response.ok || result.status !== 'success') {
+        throw new Error(result.status === 'error' ? result.message : 'Unable to submit course request.');
+      }
+      setCourseRequestSuccess(result.message);
+      setCourseCode('');
+    } catch (error) {
+      setCourseRequestError(error instanceof Error ? error.message : 'Unable to submit course request.');
+    } finally {
+      setCourseRequestLoading(false);
+    }
+  };
+
+  const moderateCourseRequest = async (request: CourseRequest, action: 'approve' | 'reject') => {
+    setCourseModerationBusyId(request.id);
+    setCourseModerationError('');
+    setCourseModerationMessage('');
+    try {
+      const response = await fetch(`/api/mod/course-requests/${encodeURIComponent(request.id)}/${action}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: action === 'reject'
+          ? JSON.stringify({ reason: courseRejectReason, customReason: courseCustomReason })
+          : undefined,
+      });
+      const result = (await response.json()) as ModerationActionResponse;
+      if (!response.ok || result.status !== 'success') {
+        throw new Error(result.status === 'error' ? result.message : 'Unable to process course request.');
+      }
+      setCourseModerationMessage(result.message);
+      setCourseRejectId('');
+      setCourseRejectReason('');
+      setCourseCustomReason('');
+      await loadModeratorCourseRequests();
+    } catch (error) {
+      setCourseModerationError(error instanceof Error ? error.message : 'Unable to process course request.');
+    } finally {
+      setCourseModerationBusyId('');
+    }
+  };
+
   const openRequestForm = () => {
     setFirstName('');
     setMiddleName('');
@@ -396,6 +495,7 @@ export const App = () => {
     setRejectionReason('');
     setCustomReason('');
     void loadModeratorRequests();
+    void loadModeratorCourseRequests();
   };
 
   const submitFacultyRequest = async (event: FormEvent<HTMLFormElement>) => {
@@ -623,6 +723,13 @@ export const App = () => {
                 onClick={() => openFacultyList('check')}
               >
                 Check Faculty Rating
+              </button>
+
+              <button
+                style={styles.secondaryButton}
+                onClick={openCourseRequestForm}
+              >
+                Request New Course
               </button>
             </div>
 
@@ -1209,7 +1316,50 @@ export const App = () => {
           </section>
         )}
 
-        {currentView === 'admin' && (
+        
+        {currentView === 'course-request' && (
+          <section>
+            <button
+              onClick={goHome}
+              style={{ ...styles.secondaryButton, padding: '8px 14px', marginBottom: '24px' }}
+            >
+              ← Back to Home
+            </button>
+            <h1 style={styles.title}>Request New Course</h1>
+            <p style={styles.subtitle}>
+              Submit a course code for moderator approval. Course codes must contain three letters followed by four digits.
+            </p>
+            {courseRequestSuccess && (
+              <div role="status" style={{ backgroundColor: '#173d2b', border: '1px solid #28764d', borderRadius: '8px', padding: '12px', color: '#a5edc1', marginBottom: '16px' }}>
+                {courseRequestSuccess}
+              </div>
+            )}
+            {courseRequestError && (
+              <div role="alert" style={{ backgroundColor: '#492323', border: '1px solid #8e3939', borderRadius: '8px', padding: '12px', color: '#ffb3b3', marginBottom: '16px' }}>
+                {courseRequestError}
+              </div>
+            )}
+            <form onSubmit={submitCourseRequest} style={{ ...styles.card, display: 'grid', gap: '14px' }}>
+              <label style={styles.label} htmlFor="course-code">Course Code</label>
+              <input
+                id="course-code"
+                style={styles.input}
+                value={courseCode}
+                onChange={(event) => setCourseCode(event.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 7))}
+                placeholder="e.g. MAT1001"
+                maxLength={7}
+                pattern="[A-Za-z]{3}[0-9]{4}"
+                required
+              />
+              <p style={{ ...styles.muted, margin: 0 }}>Format: XXX0000 (three letters + four digits).</p>
+              <button type="submit" style={styles.button} disabled={courseRequestLoading}>
+                {courseRequestLoading ? 'Submitting...' : 'Request New Course Addition'}
+              </button>
+            </form>
+          </section>
+        )}
+
+{currentView === 'admin' && (
           <section>
             <button
               onClick={goHome}
@@ -1576,6 +1726,79 @@ export const App = () => {
                 })}
               </div>
             )}
+
+            <div style={{ borderTop: '1px solid #444', marginTop: '30px', paddingTop: '24px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', marginBottom: '16px' }}>
+                <h2 style={{ margin: 0 }}>Course Requests ({moderatorCourseRequests.length})</h2>
+                <button
+                  style={{ ...styles.secondaryButton, padding: '8px 12px', fontSize: '0.9rem' }}
+                  onClick={() => void loadModeratorCourseRequests()}
+                  disabled={courseModerationLoading}
+                >
+                  {courseModerationLoading ? 'Refreshing...' : 'Refresh'}
+                </button>
+              </div>
+              {courseModerationMessage && <div role="status" style={{ color: '#a5edc1', marginBottom: '12px' }}>{courseModerationMessage}</div>}
+              {courseModerationError && <div role="alert" style={{ color: '#ffb3b3', marginBottom: '12px' }}>{courseModerationError}</div>}
+              {courseModerationLoading && <p style={styles.muted}>Loading course requests...</p>}
+              {!courseModerationLoading && moderatorCourseRequests.length === 0 && (
+                <p style={styles.muted}>No pending course requests.</p>
+              )}
+              {!courseModerationLoading && moderatorCourseRequests.map((request) => (
+                <article key={request.id} style={{ ...styles.card, display: 'grid', gap: '12px', marginBottom: '12px' }}>
+                  <div>
+                    <h3 style={{ margin: '0 0 6px' }}>{request.code}</h3>
+                    <p style={{ ...styles.muted, margin: '4px 0' }}>Submitted by: u/{request.submittedByUsername}</p>
+                    <p style={{ ...styles.muted, margin: '4px 0' }}>Submitted: {formatDate(request.createdAt)}</p>
+                  </div>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px' }}>
+                    <button
+                      style={{ ...styles.button, backgroundColor: '#23834c' }}
+                      onClick={() => void moderateCourseRequest(request, 'approve')}
+                      disabled={Boolean(courseModerationBusyId)}
+                    >
+                      {courseModerationBusyId === request.id ? 'Processing...' : '✓ Approve'}
+                    </button>
+                    <button
+                      style={{ ...styles.secondaryButton, borderColor: '#d04444', color: '#ff7777' }}
+                      onClick={() => {
+                        setCourseRejectId(courseRejectId === request.id ? '' : request.id);
+                        setCourseRejectReason('');
+                        setCourseCustomReason('');
+                      }}
+                      disabled={Boolean(courseModerationBusyId)}
+                    >
+                      Reject
+                    </button>
+                  </div>
+                  {courseRejectId === request.id && (
+                    <div style={{ borderTop: '1px solid #444', paddingTop: '12px', display: 'grid', gap: '10px' }}>
+                      <label style={styles.label}>Rejection Reason</label>
+                      <select style={styles.input} value={courseRejectReason} onChange={(event) => setCourseRejectReason(event.target.value)}>
+                        <option value="">Select a reason</option>
+                        {REJECTION_REASONS.map((reason) => <option key={reason} value={reason}>{reason}</option>)}
+                      </select>
+                      {courseRejectReason === 'Custom' && (
+                        <textarea
+                          style={{ ...styles.input, minHeight: '90px' }}
+                          value={courseCustomReason}
+                          onChange={(event) => setCourseCustomReason(event.target.value)}
+                          placeholder="Enter rejection reason..."
+                          maxLength={300}
+                        />
+                      )}
+                      <button
+                        style={{ ...styles.button, backgroundColor: '#b83232' }}
+                        onClick={() => void moderateCourseRequest(request, 'reject')}
+                        disabled={!courseRejectReason || (courseRejectReason === 'Custom' && !courseCustomReason.trim()) || Boolean(courseModerationBusyId)}
+                      >
+                        Confirm Rejection
+                      </button>
+                    </div>
+                  )}
+                </article>
+              ))}
+            </div>
           </section>
         )}
       </main>
