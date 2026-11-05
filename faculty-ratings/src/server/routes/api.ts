@@ -716,13 +716,15 @@ const getRatingEligibility = async () => {
 const isValidRatingValues = (value: unknown): value is RatingValues => {
   if (!value || typeof value !== 'object') return false;
   const record = value as Record<string, unknown>;
-  return RATING_FIELDS.every(
-    (field) =>
-      typeof record[field] === 'number' &&
-      Number.isInteger(record[field]) &&
-      record[field] >= 0 &&
-      record[field] <= 100
-  );
+  return RATING_FIELDS.every((field) => {
+    const rating = record[field];
+    return (
+      typeof rating === 'number' &&
+      Number.isInteger(rating) &&
+      rating >= 0 &&
+      rating <= 100
+    );
+  });
 };
 
 api.get('/faculty/:id/ratings', async (c) => {
