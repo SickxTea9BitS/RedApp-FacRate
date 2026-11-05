@@ -381,10 +381,7 @@ api.post('/mod/requests/:id/approve', async (c) => {
 
     if (!moderator) {
       return c.json<ApiErrorResponse>(
-        {
-          status: 'error',
-          message: 'Moderator permissions are required.',
-        },
+        { status: 'error', message: 'Moderator permissions are required.' },
         403
       );
     }
@@ -393,10 +390,48 @@ api.post('/mod/requests/:id/approve', async (c) => {
 
     if (!requestId || requestId.length > 100) {
       return c.json<ApiErrorResponse>(
-        {
-          status: 'error',
-          message: 'Invalid request ID.',
-        },
+        { status: 'error', message: 'Invalid request ID.' },
+        400
+      );
+    }
+
+    const body = await c.req.json<{
+      firstName?: unknown;
+      middleName?: unknown;
+      lastName?: unknown;
+      school?: unknown;
+    }>();
+
+    const firstName =
+      typeof body.firstName === 'string' ? body.firstName.trim() : '';
+    const middleName =
+      typeof body.middleName === 'string' ? body.middleName.trim() : '';
+    const lastName =
+      typeof body.lastName === 'string' ? body.lastName.trim() : '';
+    const school =
+      typeof body.school === 'string' ? body.school.trim().toUpperCase() : '';
+
+    if (!firstName || !lastName) {
+      return c.json<ApiErrorResponse>(
+        { status: 'error', message: 'First name and last name are required.' },
+        400
+      );
+    }
+
+    if (
+      firstName.length > 60 ||
+      middleName.length > 60 ||
+      lastName.length > 60
+    ) {
+      return c.json<ApiErrorResponse>(
+        { status: 'error', message: 'Names cannot exceed 60 characters.' },
+        400
+      );
+    }
+
+    if (!VALID_SCHOOLS.includes(school)) {
+      return c.json<ApiErrorResponse>(
+        { status: 'error', message: 'Please select a valid school.' },
         400
       );
     }
@@ -405,10 +440,7 @@ api.post('/mod/requests/:id/approve', async (c) => {
 
     if (!storedRequest) {
       return c.json<ApiErrorResponse>(
-        {
-          status: 'error',
-          message: 'Faculty request not found.',
-        },
+        { status: 'error', message: 'Faculty request not found.' },
         404
       );
     }
@@ -417,45 +449,59 @@ api.post('/mod/requests/:id/approve', async (c) => {
 
     if (request.status !== 'pending') {
       return c.json<ApiErrorResponse>(
-        {
-          status: 'error',
-          message: 'This request has already been reviewed.',
-        },
+        { status: 'error', message: 'This request has already been reviewed.' },
         409
       );
     }
 
-    const facultyRecords = await redis.hGetAll(FACULTY_HASH_KEY);
+    const approvedRecord: FacultyRecord = {
+      id: request.id,
+      firstName,
+      middleName,
+      lastName,
+      school,
+      createdAt: Date.now(),
+    };
 
-    if (isDuplicateFaculty(facultyRecords, request)) {
+    const facultyRecords = await redis.hGetAll(FACULTY_HASH_KEY);
+    const duplicate = Object.values(facultyRecords).some((value) => {
+      try {
+        const existing = JSON.parse(value) as FacultyRecord;
+        return (
+          existing.school === school &&
+          normalizeName(getFullName(existing)) ===
+            normalizeName(getFullName(approvedRecord))
+        );
+      } catch {
+        return false;
+      }
+    });
+
+    if (duplicate) {
       return c.json<ApiErrorResponse>(
         {
           status: 'error',
           message:
-            'This faculty member already exists. Reject this request as Already Exists instead.',
+            'A faculty member with these corrected details already exists in this school.',
         },
         409
       );
     }
 
-    const facultyRecord: FacultyRecord = {
-      id: request.id,
-      firstName: request.firstName,
-      middleName: request.middleName,
-      lastName: request.lastName,
-      school: request.school,
-      createdAt: Date.now(),
-    };
-
+    const now = Date.now();
     const updatedRequest: FacultyRequest = {
       ...request,
+      firstName,
+      middleName,
+      lastName,
+      school,
       status: 'approved',
-      reviewedAt: Date.now(),
+      reviewedAt: now,
       reviewedByUsername: moderator.username,
     };
 
     await redis.hSet(FACULTY_HASH_KEY, {
-      [facultyRecord.id]: JSON.stringify(facultyRecord),
+      [approvedRecord.id]: JSON.stringify(approvedRecord),
     });
 
     await redis.hSet(REQUESTS_HASH_KEY, {
@@ -464,16 +510,13 @@ api.post('/mod/requests/:id/approve', async (c) => {
 
     return c.json<ModerationActionResponse>({
       status: 'success',
-      message: `${getFullName(request)} has been added to the faculty directory.`,
+      message: `${getFullName(approvedRecord)} has been added to the faculty directory.`,
     });
   } catch (error) {
     console.error('Faculty approval error:', error);
 
     return c.json<ApiErrorResponse>(
-      {
-        status: 'error',
-        message: 'Unable to approve this request.',
-      },
+      { status: 'error', message: 'Unable to approve this request.' },
       500
     );
   }
