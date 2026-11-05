@@ -1,66 +1,97 @@
+import React, { useState, useEffect } from 'react';
+import { createRoot } from 'react-dom/client';
 import './index.css';
 
-import { navigateTo } from '@devvit/web/client';
-import { context, requestExpandedMode } from '@devvit/web/client';
-import { StrictMode } from 'react';
-import { createRoot } from 'react-dom/client';
+export const App = () => {
+  const [currentView, setCurrentView] = useState('home');
+  const [isMod, setIsMod] = useState(false);
 
-export const Splash = () => {
+  useEffect(() => {
+    // 1. Listen for data coming from the Devvit backend
+    const messageListener = (event: MessageEvent) => {
+      const { type, data } = event.data;
+      if (type === 'devvit-message') {
+        const message = data.message;
+        if (message.type === 'INIT_RESPONSE') {
+          setIsMod(message.payload.isMod);
+        }
+      }
+    };
+    window.addEventListener('message', messageListener);
+
+    // 2. Ask the Devvit backend if the current user is a mod
+    window.parent.postMessage({ type: 'INITIALIZE' }, '*');
+
+    return () => window.removeEventListener('message', messageListener);
+  }, []);
+
   return (
-    <div className="flex relative flex-col justify-center items-center min-h-screen gap-4 bg-white dark:bg-gray-900">
-      <img
-        className="object-contain w-1/2 max-w-[250px] mx-auto"
-        src="/snoo.png"
-        alt="Snoo"
-      />
-      <div className="flex flex-col items-center gap-2">
-        <h1 className="text-2xl font-bold text-center text-gray-900 dark:text-white">
-          Hey {context.username ?? 'user'} 👋
-        </h1>
-        <p className="text-base text-center text-gray-600 dark:text-gray-300">
-          Edit{' '}
-          <span className="bg-[#e5ebee] dark:bg-gray-700 px-1 py-0.5 rounded">
-            src/client/splash.tsx
-          </span>{' '}
-          to get started.
-        </p>
-      </div>
-      <div className="flex items-center justify-center mt-5">
-        <button
-          className="flex items-center justify-center bg-[#d93900] dark:bg-orange-600 text-white w-auto h-10 rounded-full cursor-pointer transition-colors px-4 hover:bg-[#c23300] dark:hover:bg-orange-700"
-          onClick={(e) => requestExpandedMode(e.nativeEvent, 'game')}
-        >
-          Tap to Start
-        </button>
-      </div>
-      <footer className="absolute bottom-4 left-1/2 -translate-x-1/2 flex gap-3 text-[0.8em] text-gray-600 dark:text-gray-400">
-        <button
-          className="cursor-pointer hover:text-gray-900 dark:hover:text-white transition-colors"
-          onClick={() => navigateTo('https://developers.reddit.com/docs')}
-        >
-          Docs
-        </button>
-        <span className="text-gray-300 dark:text-gray-600">|</span>
-        <button
-          className="cursor-pointer hover:text-gray-900 dark:hover:text-white transition-colors"
-          onClick={() => navigateTo('https://www.reddit.com/r/Devvit')}
-        >
-          r/Devvit
-        </button>
-        <span className="text-gray-300 dark:text-gray-600">|</span>
-        <button
-          className="cursor-pointer hover:text-gray-900 dark:hover:text-white transition-colors"
-          onClick={() => navigateTo('https://discord.com/invite/R7yu2wh9Qz')}
-        >
-          Discord
-        </button>
-      </footer>
+    <div style={{ 
+      backgroundColor: '#1a1a1b', 
+      color: 'white', 
+      minHeight: '100vh', 
+      padding: '20px', 
+      fontFamily: 'sans-serif',
+      display: 'flex',
+      flexDirection: 'column',
+      alignItems: 'center',
+      justifyContent: 'center'
+    }}>
+      
+      {currentView === 'home' && (
+        <div style={{ textAlign: 'center', maxWidth: '600px', width: '100%' }}>
+          <h1 style={{ fontSize: '2.5rem', marginBottom: '10px' }}>Faculty Rating Portal</h1>
+          <p style={{ color: '#888', marginBottom: '40px', fontSize: '1.2rem' }}>Select an option to proceed</p>
+          
+          <div style={{ display: 'flex', gap: '20px', justifyContent: 'center', flexWrap: 'wrap' }}>
+            <button 
+              onClick={() => setCurrentView('rate_list')}
+              style={{ padding: '12px 24px', cursor: 'pointer', borderRadius: '8px', border: 'none', backgroundColor: '#0079D3', color: 'white', fontSize: '1rem', fontWeight: 'bold', transition: 'background 0.2s' }}>
+              Rate a Faculty
+            </button>
+            <button 
+              onClick={() => setCurrentView('check_list')}
+              style={{ padding: '12px 24px', cursor: 'pointer', borderRadius: '8px', border: '2px solid #0079D3', backgroundColor: 'transparent', color: '#0079D3', fontSize: '1rem', fontWeight: 'bold', transition: 'background 0.2s' }}>
+              Check Faculty Rating
+            </button>
+          </div>
+
+          {/* Admin Panel - Only visible if the backend confirmed they are a Mod */}
+          {isMod && (
+            <div style={{ marginTop: '50px' }}>
+              <button 
+                onClick={() => setCurrentView('admin')}
+                style={{ padding: '12px 24px', cursor: 'pointer', borderRadius: '8px', border: 'none', backgroundColor: '#FF4500', color: 'white', fontSize: '1rem', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '8px', margin: '0 auto' }}>
+                <span>⚙️</span> Mod Admin Panel
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+
+      {currentView !== 'home' && (
+        <div style={{ textAlign: 'center', maxWidth: '600px', width: '100%' }}>
+          <h2 style={{ fontSize: '2rem', marginBottom: '20px' }}>
+            {currentView === 'rate_list' ? 'Rate a Faculty' : 
+             currentView === 'check_list' ? 'Faculty Ratings' : 
+             'Admin Dashboard'}
+          </h2>
+          <p style={{ color: '#aaa', marginBottom: '30px' }}>Content coming next.</p>
+          
+          <button 
+            onClick={() => setCurrentView('home')}
+            style={{ padding: '10px 20px', cursor: 'pointer', backgroundColor: '#333', color: 'white', border: 'none', borderRadius: '6px', fontSize: '1rem' }}>
+            Back to Home
+          </button>
+        </div>
+      )}
     </div>
   );
 };
 
-createRoot(document.getElementById('root')!).render(
-  <StrictMode>
-    <Splash />
-  </StrictMode>
-);
+// --- Mount the React App to the HTML ---
+const rootElement = document.getElementById('root') || document.getElementById('app');
+if (rootElement) {
+  const root = createRoot(rootElement);
+  root.render(<App />);
+}
