@@ -195,6 +195,7 @@ export const App = () => {
   const [facultyCourseRequestMessage, setFacultyCourseRequestMessage] = useState('');
   const [facultyCourseRequestError, setFacultyCourseRequestError] = useState('');
   const [facultyCourseRequestBusy, setFacultyCourseRequestBusy] = useState(false);
+  const [showFacultyCourseRequestEditor, setShowFacultyCourseRequestEditor] = useState(false);
   const [moderatorFacultyCourseRequests, setModeratorFacultyCourseRequests] = useState<FacultyCourseTagRequest[]>([]);
   const [moderatorFacultyCourseSelection, setModeratorFacultyCourseSelection] = useState<Record<string, string[]>>({});
 
@@ -436,6 +437,7 @@ export const App = () => {
       setFacultyCourseRequestMessage(result.message);
       setFacultyCourseRequestCodes([]);
       setFacultyCourseRequestSearch('');
+      setShowFacultyCourseRequestEditor(false);
     } catch (error) {
       setFacultyCourseRequestError(error instanceof Error ? error.message : 'Unable to submit request.');
     } finally { setFacultyCourseRequestBusy(false); }
@@ -1173,10 +1175,24 @@ export const App = () => {
               )) : <span style={styles.muted}>No courses assigned</span>}
             </div>
             <div style={{ margin: '0 0 20px', display: 'grid', gap: '10px' }}>
-              <button type="button" style={{ ...styles.secondaryButton, justifySelf: 'start', padding: '7px 13px' }} onClick={() => { setFacultyCourseRequestCodes([]); setFacultyCourseRequestSearch(''); setFacultyCourseRequestError(''); setFacultyCourseRequestMessage(''); void loadAvailableCourses(); }}>
-                Request Course(s) +
+              <button type="button" style={{ ...styles.secondaryButton, justifySelf: 'start', padding: '7px 13px' }} onClick={() => { setShowFacultyCourseRequestEditor((current) => !current); setFacultyCourseRequestCodes([]); setFacultyCourseRequestSearch(''); setFacultyCourseRequestError(''); setFacultyCourseRequestMessage(''); void loadAvailableCourses(); }}>
+                {(selectedFaculty.courseCodes ?? []).length > 0 ? '+' : 'Request Course(s) +'}
               </button>
+              {showFacultyCourseRequestEditor && (
+                <>
               {facultyCourseRequestMessage && <p role="status" style={{ color: '#8de0ad', margin: 0 }}>{facultyCourseRequestMessage}</p>}
+
+              {facultyCourseRequestError && <p role="alert" style={{ color: '#ffb3b3', margin: 0 }}>{facultyCourseRequestError}</p>}
+              <input style={styles.input} value={facultyCourseRequestSearch} onChange={(event) => setFacultyCourseRequestSearch(event.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 7))} placeholder="Search approved course codes..." maxLength={7} />
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                {facultyCourseRequestCodes.map((code) => <button key={code} type="button" style={styles.secondaryButton} onClick={() => setFacultyCourseRequestCodes((current) => current.filter((item) => item !== code))}>{code} ×</button>)}
+              </div>
+              {availableCourses.filter((course) => !(selectedFaculty.courseCodes ?? []).includes(course.code) && !facultyCourseRequestCodes.includes(course.code)).filter((course) => !facultyCourseRequestSearch || course.code.includes(facultyCourseRequestSearch)).slice(0, 8).map((course) => (
+                <button key={course.code} type="button" style={{ ...styles.secondaryButton, textAlign: 'left', padding: '8px 12px' }} onClick={() => setFacultyCourseRequestCodes((current) => [...current, course.code])}>+ {course.code}</button>
+              ))}
+              <button type="button" style={styles.button} onClick={() => void submitFacultyCourseTagRequest()} disabled={facultyCourseRequestBusy || facultyCourseRequestCodes.length === 0}>{facultyCourseRequestBusy ? 'Submitting...' : 'Submit Course Request'}</button>
+                </>
+              )}
               {facultyCourseRequestError && <p role="alert" style={{ color: '#ffb3b3', margin: 0 }}>{facultyCourseRequestError}</p>}
               <input style={styles.input} value={facultyCourseRequestSearch} onChange={(event) => setFacultyCourseRequestSearch(event.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 7))} placeholder="Search approved course codes..." maxLength={7} />
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
