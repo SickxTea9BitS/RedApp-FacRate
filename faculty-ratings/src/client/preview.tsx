@@ -25,12 +25,7 @@ const Preview = () => {
     setError('');
 
     try {
-      void requestExpandedMode(event.nativeEvent, 'expanded').catch((cause: unknown) => {
-        console.error('Unable to open Faculty Ratings:', cause);
-        const detail = cause instanceof Error ? cause.message : String(cause);
-        setError(`Unable to open Faculty Ratings. ${detail}`);
-        setOpening(false);
-      });
+      requestExpandedMode(event.nativeEvent, 'expanded');
     } catch (cause) {
       console.error('Unable to open Faculty Ratings:', cause);
       const detail = cause instanceof Error ? cause.message : String(cause);
@@ -40,20 +35,7 @@ const Preview = () => {
   };
 
   return (
-    <main
-      className="faculty-preview"
-      style={{
-        boxSizing: 'border-box',
-        width: '100%',
-        padding: '14px 16px',
-        borderRadius: '12px',
-        background: '#1a1a1b',
-        color: '#fff',
-        fontFamily: 'sans-serif',
-        textAlign: 'center',
-        touchAction: 'pan-y',
-      }}
-    >
+    <main className="faculty-preview">
       <div style={{ fontSize: '1.5rem', marginBottom: '4px' }}>🎓</div>
       <h1 style={{ fontSize: '1.25rem', margin: '0 0 6px' }}>Faculty Ratings</h1>
       <p style={{ color: '#aaa', fontSize: '0.9rem', margin: '0 auto 12px', lineHeight: 1.35, maxWidth: '420px' }}>
