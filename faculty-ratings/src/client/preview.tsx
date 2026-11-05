@@ -72,13 +72,9 @@ const Preview = () => {
           alt="VIT Bhopal University logo"
           style={{
             display: 'block',
-            boxSizing: 'border-box',
             width: '240px',
             maxWidth: '90%',
             height: '145px',
-            padding: '12px',
-            borderRadius: '12px',
-            background: '#fff',
             objectFit: 'contain',
           }}
         />
@@ -88,7 +84,7 @@ const Preview = () => {
         <p
           style={{
             width: '100%',
-            color: '#aaa',
+            color: '#e7efff',
             fontSize: '0.95rem',
             lineHeight: 1.55,
             margin: 0,
@@ -104,8 +100,8 @@ const Preview = () => {
             padding: '13px 24px',
             borderRadius: '8px',
             border: 'none',
-            background: '#0079D3',
-            color: '#fff',
+            background: '#ffffff',
+            color: '#2c67c5',
             fontSize: '1rem',
             fontWeight: 700,
             cursor: opening ? 'wait' : 'pointer',
@@ -115,7 +111,7 @@ const Preview = () => {
           {opening ? 'Opening...' : 'Launch App'}
         </button>
         {error && (
-          <p role="alert" style={{ color: '#ffb3b3', fontSize: '0.85rem', margin: 0 }}>
+          <p role="alert" style={{ color: '#ffe0e0', fontSize: '0.85rem', margin: 0 }}>
             {error}
           </p>
         )}
