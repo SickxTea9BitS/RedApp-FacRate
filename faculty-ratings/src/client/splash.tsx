@@ -838,6 +838,7 @@ export const App = () => {
               </div>
             )}
 
+            {ratingMode === 'check' && (
             <div style={{ ...styles.card, display: 'grid', gap: '18px', marginBottom: '18px' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', gap: '12px', alignItems: 'center' }}>
                 <h3 style={{ margin: 0 }}>Faculty Rating Summary</h3>
@@ -882,6 +883,7 @@ export const App = () => {
                 <span>0% · Poor</span><span>25%</span><span>50%</span><span>75%</span><span>100% · Excellent</span>
               </div>
             </div>
+            )}
 
             {ratingMode === 'rate' && (
               <div style={{ ...styles.card, display: 'grid', gap: '16px' }}>
@@ -908,14 +910,47 @@ export const App = () => {
                           <span>{label}</span><span>{ratingValues[key]}%</span>
                         </label>
                         <input
+                          className="rating-slider"
                           type="range"
                           min="0"
                           max="100"
                           step="1"
                           value={ratingValues[key]}
                           onChange={(event) => setRatingValues((current) => ({ ...current, [key]: Number(event.target.value) }))}
-                          style={{ width: '100%', accentColor: '#ff9800' }}
+                          aria-label={label}
                         />
+                        <div className="rating-legend">
+                          {(
+                            key === 'teaching'
+                              ? [
+                                  ['#111111', '0–20%', 'Cannot understand the teaching'],
+                                  ['#e53935', '20–40%', 'Difficult to understand'],
+                                  ['#ff9800', '40–60%', 'Sometimes understandable'],
+                                  ['#ffeb3b', '60–80%', 'Generally understandable'],
+                                  ['#4caf50', '80–100%', 'Understand pretty well in class'],
+                                ]
+                              : key === 'internalMarking' || key === 'examEvaluation'
+                                ? [
+                                    ['#111111', '0–20%', 'Bad evaluation'],
+                                    ['#e53935', '20–40%', 'Poor evaluation'],
+                                    ['#ff9800', '40–60%', 'Fair evaluation'],
+                                    ['#ffeb3b', '60–80%', 'Good evaluation'],
+                                    ['#4caf50', '80–100%', 'Lenient evaluation'],
+                                  ]
+                                : [
+                                    ['#111111', '0–20%', 'Skipping the course would be better'],
+                                    ['#e53935', '20–40%', 'Only as a last option'],
+                                    ['#ff9800', '40–60%', 'Okay, not bad but not great'],
+                                    ['#ffeb3b', '60–80%', 'Definitely as a second option'],
+                                    ['#4caf50', '80–100%', 'Absolute GOAT'],
+                                  ]
+                          ).map(([color, range, description]) => (
+                            <div className="rating-legend-item" key={range}>
+                              <span className="rating-legend-swatch" style={{ backgroundColor: color }} />
+                              <span><strong>{range}</strong> — {description}</span>
+                            </div>
+                          ))}
+                        </div>
                       </div>
                     ))}
                     <button type="submit" style={styles.button} disabled={ratingSubmitting}>
