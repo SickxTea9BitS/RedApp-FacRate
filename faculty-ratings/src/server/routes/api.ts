@@ -677,7 +677,7 @@ api.post('/mod/faculty', async (c) => {
   }
 });
 
-api.delete('/mod/faculty/:id', async (c) => {
+api.post('/mod/faculty/:id/delete', async (c) => {
   try {
     if (!(await getModerator())) return c.json<ApiErrorResponse>({ status: 'error', message: 'Moderator permissions are required.' }, 403);
     const id = c.req.param('id');
@@ -749,14 +749,13 @@ api.put('/mod/courses/:id', async (c) => {
   }
 });
 
-api.delete('/mod/courses/:id', async (c) => {
+api.post('/mod/courses/:id/delete', async (c) => {
   try {
     if (!(await getModerator())) return c.json<ApiErrorResponse>({ status: 'error', message: 'Moderator permissions are required.' }, 403);
     const code = c.req.param('id').trim().toUpperCase();
     const stored = await redis.hGet(COURSES_HASH_KEY, code);
     if (!stored) return c.json<ApiErrorResponse>({ status: 'error', message: 'Course not found.' }, 404);
-    const body = await c.req.json<{ confirmAssigned?: unknown }>().catch(() => ({} as { confirmAssigned?: unknown }));
-    const confirmAssigned = body.confirmAssigned === true;
+    const confirmAssigned = c.req.query('confirmAssigned') === 'true';
     const faculty = await redis.hGetAll(FACULTY_HASH_KEY);
     const assignedFaculty: Array<{ id: string; name: string; school: string; record: FacultyRecord }> = [];
     for (const [facultyId, value] of Object.entries(faculty)) {
