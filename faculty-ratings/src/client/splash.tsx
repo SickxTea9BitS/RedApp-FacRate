@@ -211,7 +211,7 @@ export const App = () => {
     examEvaluation: 50,
     overallRecommendation: 50,
     classAverage: 50,
-    questionProvision: 'sometimes',
+    questionProvision: '',
   });
   const [ratingLoading, setRatingLoading] = useState(false);
   const [ratingSubmitting, setRatingSubmitting] = useState(false);
