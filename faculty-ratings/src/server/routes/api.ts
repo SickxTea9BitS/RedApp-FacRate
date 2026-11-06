@@ -684,9 +684,17 @@ api.delete('/mod/faculty/:id', async (c) => {
     const stored = await redis.hGet(FACULTY_HASH_KEY, id);
     if (!stored) return c.json<ApiErrorResponse>({ status: 'error', message: 'Faculty member not found.' }, 404);
     const record = JSON.parse(stored) as FacultyRecord;
-    await redis.hDel(FACULTY_HASH_KEY, [id]);
-    await redis.del(`${RATINGS_KEY_PREFIX}${id}`);
-    return c.json<ModerationActionResponse>({ status: 'success', message: getFullName(record) + ' and their ratings were deleted.' });
+    const ratingsKey = `${RATINGS_KEY_PREFIX}${id}`;
+    const ratings = await redis.hGetAll(ratingsKey);
+    const ratingUserIds = Object.keys(ratings);
+    if (ratingUserIds.length > 0) {
+      await redis.hDel(ratingsKey, ratingUserIds);
+    }
+    const deleted = await redis.hDel(FACULTY_HASH_KEY, [id]);
+    if (!deleted) {
+      return c.json<ApiErrorResponse>({ status: 'error', message: 'Faculty member could not be deleted. Refresh and try again.' }, 500);
+    }
+    return c.json<ModerationActionResponse>({ status: 'success', message: getFullName(record) + ' and ' + ratingUserIds.length + ' rating(s) were deleted.' });
   } catch (error) {
     console.error('Faculty deletion error:', error);
     return c.json<ApiErrorResponse>({ status: 'error', message: 'Unable to delete faculty member.' }, 500);
@@ -747,11 +755,42 @@ api.delete('/mod/courses/:id', async (c) => {
     const code = c.req.param('id').trim().toUpperCase();
     const stored = await redis.hGet(COURSES_HASH_KEY, code);
     if (!stored) return c.json<ApiErrorResponse>({ status: 'error', message: 'Course not found.' }, 404);
+    const body = await c.req.json<{ confirmAssigned?: unknown }>().catch(() => ({} as { confirmAssigned?: unknown }));
+    const confirmAssigned = body.confirmAssigned === true;
     const faculty = await redis.hGetAll(FACULTY_HASH_KEY);
-    const assignedTo = Object.values(faculty).some((value) => { try { return ((JSON.parse(value) as FacultyRecord).courseCodes ?? []).includes(code); } catch { return false; } });
-    if (assignedTo) return c.json<ApiErrorResponse>({ status: 'error', message: 'This course is assigned to faculty. Remove it from their course lists before deleting it.' }, 409);
-    await redis.hDel(COURSES_HASH_KEY, [code]);
-    return c.json<ModerationActionResponse>({ status: 'success', message: code + ' was deleted.' });
+    const assignedFaculty: Array<{ id: string; name: string; school: string; record: FacultyRecord }> = [];
+    for (const [facultyId, value] of Object.entries(faculty)) {
+      try {
+        const record = JSON.parse(value) as FacultyRecord;
+        if ((record.courseCodes ?? []).includes(code)) {
+          assignedFaculty.push({ id: facultyId, name: getFullName(record), school: record.school, record });
+        }
+      } catch {
+        continue;
+      }
+    }
+    if (assignedFaculty.length > 0 && !confirmAssigned) {
+      const facultyList = assignedFaculty.map((item) => `${item.name} (${item.school})`).join(', ');
+      return c.json<ApiErrorResponse>({
+        status: 'error',
+        message: `This course is assigned to: ${facultyList}. Delete it anyway? It will be removed from these faculty members' assigned course lists.`,
+      }, 409);
+    }
+    for (const item of assignedFaculty) {
+      const updatedRecord: FacultyRecord = {
+        ...item.record,
+        courseCodes: (item.record.courseCodes ?? []).filter((assignedCode) => assignedCode !== code),
+      };
+      await redis.hSet(FACULTY_HASH_KEY, { [item.id]: JSON.stringify(updatedRecord) });
+    }
+    const deleted = await redis.hDel(COURSES_HASH_KEY, [code]);
+    if (!deleted) {
+      return c.json<ApiErrorResponse>({ status: 'error', message: 'Course could not be deleted. Refresh and try again.' }, 500);
+    }
+    const assignmentMessage = assignedFaculty.length > 0
+      ? ` It was also removed from ${assignedFaculty.length} faculty member(s).`
+      : '';
+    return c.json<ModerationActionResponse>({ status: 'success', message: code + ' was deleted.' + assignmentMessage });
   } catch (error) {
     console.error('Course deletion error:', error);
     return c.json<ApiErrorResponse>({ status: 'error', message: 'Unable to delete course.' }, 500);
