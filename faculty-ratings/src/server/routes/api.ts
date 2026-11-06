@@ -769,11 +769,14 @@ api.delete('/mod/courses/:id', async (c) => {
         continue;
       }
     }
-    if (assignedFaculty.length > 0 && !confirmAssigned) {
+    if (!confirmAssigned) {
       const facultyList = assignedFaculty.map((item) => `${item.name} (${item.school})`).join(', ');
+      const confirmationMessage = assignedFaculty.length > 0
+        ? `This course is assigned to the following faculty: ${facultyList}.\n\nIf you continue, ${code} will be removed from their assigned course lists and deleted from the course directory. Continue?`
+        : `No faculty members are currently assigned to ${code}. Delete this course? This cannot be undone.`;
       return c.json<ApiErrorResponse>({
         status: 'error',
-        message: `This course is assigned to: ${facultyList}. Delete it anyway? It will be removed from these faculty members' assigned course lists.`,
+        message: confirmationMessage,
       }, 409);
     }
     for (const item of assignedFaculty) {
