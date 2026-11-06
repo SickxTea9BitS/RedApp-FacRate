@@ -1427,6 +1427,7 @@ export const App = () => {
                             }}>
                               <input
                                 type="radio"
+                                required
                                 name="questionProvision"
                                 value={option.value}
                                 checked={selected}
