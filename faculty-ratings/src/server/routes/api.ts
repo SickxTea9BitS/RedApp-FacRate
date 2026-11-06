@@ -639,6 +639,125 @@ api.put('/mod/faculty/:id', async (c) => {
 });
 
 
+
+api.post('/mod/faculty', async (c) => {
+  try {
+    const moderator = await getModerator();
+    if (!moderator) return c.json<ApiErrorResponse>({ status: 'error', message: 'Moderator permissions are required.' }, 403);
+    const body = await c.req.json<{ firstName?: unknown; middleName?: unknown; lastName?: unknown; school?: unknown; courseCodes?: unknown }>();
+    const firstName = typeof body.firstName === 'string' ? body.firstName.trim() : '';
+    const middleName = typeof body.middleName === 'string' ? body.middleName.trim() : '';
+    const lastName = typeof body.lastName === 'string' ? body.lastName.trim() : '';
+    const school = typeof body.school === 'string' ? body.school.trim().toUpperCase() : '';
+    if (!firstName || !lastName) return c.json<ApiErrorResponse>({ status: 'error', message: 'First name and last name are required.' }, 400);
+    if (firstName.length > 60 || middleName.length > 60 || lastName.length > 60) return c.json<ApiErrorResponse>({ status: 'error', message: 'Names cannot exceed 60 characters.' }, 400);
+    if (!VALID_SCHOOLS.includes(school)) return c.json<ApiErrorResponse>({ status: 'error', message: 'Please select a valid school.' }, 400);
+    if (!Array.isArray(body.courseCodes) || body.courseCodes.length > 20) return c.json<ApiErrorResponse>({ status: 'error', message: 'Select up to 20 courses.' }, 400);
+    const courseCodes: string[] = [];
+    for (const value of body.courseCodes) {
+      if (typeof value !== 'string') return c.json<ApiErrorResponse>({ status: 'error', message: 'Invalid course selection.' }, 400);
+      const code = value.trim().toUpperCase();
+      if (!COURSE_CODE_PATTERN.test(code) || courseCodes.includes(code)) return c.json<ApiErrorResponse>({ status: 'error', message: 'Course selections must be valid and unique.' }, 400);
+      courseCodes.push(code);
+    }
+    const courses = await redis.hGetAll(COURSES_HASH_KEY);
+    for (const code of courseCodes) if (!Object.prototype.hasOwnProperty.call(courses, code)) return c.json<ApiErrorResponse>({ status: 'error', message: code + ' is not an approved course.' }, 400);
+    const id = randomUUID();
+    const record: FacultyRecord = { id, firstName, middleName, lastName, school, courseCodes, createdAt: Date.now() };
+    const allFaculty = await redis.hGetAll(FACULTY_HASH_KEY);
+    const duplicate = Object.values(allFaculty).some((value) => {
+      try { const existing = JSON.parse(value) as FacultyRecord; return existing.school === school && normalizeName(getFullName(existing)) === normalizeName(getFullName(record)); } catch { return false; }
+    });
+    if (duplicate) return c.json<ApiErrorResponse>({ status: 'error', message: 'A faculty member with this name already exists in this school.' }, 409);
+    await redis.hSet(FACULTY_HASH_KEY, { [id]: JSON.stringify(record) });
+    return c.json<ModerationActionResponse>({ status: 'success', message: getFullName(record) + ' was added to the faculty directory.' });
+  } catch (error) {
+    console.error('Faculty creation error:', error);
+    return c.json<ApiErrorResponse>({ status: 'error', message: 'Unable to create faculty member.' }, 500);
+  }
+});
+
+api.delete('/mod/faculty/:id', async (c) => {
+  try {
+    if (!(await getModerator())) return c.json<ApiErrorResponse>({ status: 'error', message: 'Moderator permissions are required.' }, 403);
+    const id = c.req.param('id');
+    const stored = await redis.hGet(FACULTY_HASH_KEY, id);
+    if (!stored) return c.json<ApiErrorResponse>({ status: 'error', message: 'Faculty member not found.' }, 404);
+    const record = JSON.parse(stored) as FacultyRecord;
+    await redis.hDel(FACULTY_HASH_KEY, [id]);
+    await redis.del(`${RATINGS_KEY_PREFIX}${id}`);
+    return c.json<ModerationActionResponse>({ status: 'success', message: getFullName(record) + ' and their ratings were deleted.' });
+  } catch (error) {
+    console.error('Faculty deletion error:', error);
+    return c.json<ApiErrorResponse>({ status: 'error', message: 'Unable to delete faculty member.' }, 500);
+  }
+});
+
+api.post('/mod/courses', async (c) => {
+  try {
+    const moderator = await getModerator();
+    if (!moderator) return c.json<ApiErrorResponse>({ status: 'error', message: 'Moderator permissions are required.' }, 403);
+    const body = await c.req.json<{ code?: unknown }>();
+    const code = typeof body.code === 'string' ? body.code.trim().toUpperCase() : '';
+    if (!COURSE_CODE_PATTERN.test(code)) return c.json<ApiErrorResponse>({ status: 'error', message: 'Course code must contain exactly three letters followed by four digits (for example, MAT1001).' }, 400);
+    if (await redis.hGet(COURSES_HASH_KEY, code)) return c.json<ApiErrorResponse>({ status: 'error', message: 'This course already exists.' }, 409);
+    const record: CourseRecord = { id: code, code, createdAt: Date.now(), createdByUsername: moderator.username, approvedAt: Date.now(), approvedByUsername: moderator.username };
+    await redis.hSet(COURSES_HASH_KEY, { [code]: JSON.stringify(record) });
+    return c.json<ModerationActionResponse>({ status: 'success', message: code + ' was added to the course directory.' });
+  } catch (error) {
+    console.error('Course creation error:', error);
+    return c.json<ApiErrorResponse>({ status: 'error', message: 'Unable to create course.' }, 500);
+  }
+});
+
+api.put('/mod/courses/:id', async (c) => {
+  try {
+    const moderator = await getModerator();
+    if (!moderator) return c.json<ApiErrorResponse>({ status: 'error', message: 'Moderator permissions are required.' }, 403);
+    const oldCode = c.req.param('id').trim().toUpperCase();
+    const body = await c.req.json<{ code?: unknown }>();
+    const code = typeof body.code === 'string' ? body.code.trim().toUpperCase() : '';
+    if (!COURSE_CODE_PATTERN.test(oldCode) || !COURSE_CODE_PATTERN.test(code)) return c.json<ApiErrorResponse>({ status: 'error', message: 'Enter a valid course code.' }, 400);
+    const stored = await redis.hGet(COURSES_HASH_KEY, oldCode);
+    if (!stored) return c.json<ApiErrorResponse>({ status: 'error', message: 'Course not found.' }, 404);
+    if (code !== oldCode && await redis.hGet(COURSES_HASH_KEY, code)) return c.json<ApiErrorResponse>({ status: 'error', message: 'The new course code already exists.' }, 409);
+    const record = JSON.parse(stored) as CourseRecord;
+    const updated: CourseRecord = { ...record, id: code, code };
+    if (code !== oldCode) {
+      const faculty = await redis.hGetAll(FACULTY_HASH_KEY);
+      for (const [id, value] of Object.entries(faculty)) {
+        try {
+          const item = JSON.parse(value) as FacultyRecord;
+          if ((item.courseCodes ?? []).includes(oldCode)) await redis.hSet(FACULTY_HASH_KEY, { [id]: JSON.stringify({ ...item, courseCodes: item.courseCodes?.map((itemCode) => itemCode === oldCode ? code : itemCode) }) });
+        } catch { /* Ignore malformed records. */ }
+      }
+      await redis.hDel(COURSES_HASH_KEY, [oldCode]);
+    }
+    await redis.hSet(COURSES_HASH_KEY, { [code]: JSON.stringify(updated) });
+    return c.json<ModerationActionResponse>({ status: 'success', message: code === oldCode ? code + ' was saved.' : oldCode + ' was renamed to ' + code + '.' });
+  } catch (error) {
+    console.error('Course update error:', error);
+    return c.json<ApiErrorResponse>({ status: 'error', message: 'Unable to update course.' }, 500);
+  }
+});
+
+api.delete('/mod/courses/:id', async (c) => {
+  try {
+    if (!(await getModerator())) return c.json<ApiErrorResponse>({ status: 'error', message: 'Moderator permissions are required.' }, 403);
+    const code = c.req.param('id').trim().toUpperCase();
+    const stored = await redis.hGet(COURSES_HASH_KEY, code);
+    if (!stored) return c.json<ApiErrorResponse>({ status: 'error', message: 'Course not found.' }, 404);
+    const faculty = await redis.hGetAll(FACULTY_HASH_KEY);
+    const assignedTo = Object.values(faculty).some((value) => { try { return ((JSON.parse(value) as FacultyRecord).courseCodes ?? []).includes(code); } catch { return false; } });
+    if (assignedTo) return c.json<ApiErrorResponse>({ status: 'error', message: 'This course is assigned to faculty. Remove it from their course lists before deleting it.' }, 409);
+    await redis.hDel(COURSES_HASH_KEY, [code]);
+    return c.json<ModerationActionResponse>({ status: 'success', message: code + ' was deleted.' });
+  } catch (error) {
+    console.error('Course deletion error:', error);
+    return c.json<ApiErrorResponse>({ status: 'error', message: 'Unable to delete course.' }, 500);
+  }
+});
+
 api.post('/faculty/:id/course-requests', async (c) => {
   try {
     const userId = context.userId;
