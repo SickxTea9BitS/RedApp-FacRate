@@ -91,18 +91,22 @@ export type DecrementResponse = {
   count: number;
 };
 
+export type QuestionProvision = 'no' | 'sometimes' | 'yes';
+
 export type FacultyRatingValues = {
   teaching: number;
   internalMarking: number;
   examEvaluation: number;
   overallRecommendation: number;
   classAverage: number;
+  questionProvision: QuestionProvision | '';
 };
 
 export type FacultyRatingSummary = {
   status: 'success';
   count: number;
-  averages: FacultyRatingValues;
+  averages: Omit<FacultyRatingValues, 'questionProvision'>;
+  questionProvisionCounts: Record<QuestionProvision, number>;
   eligibility: {
     loggedIn: boolean;
     eligible: boolean;
