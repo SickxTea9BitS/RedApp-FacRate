@@ -211,6 +211,7 @@ export const App = () => {
     examEvaluation: 50,
     overallRecommendation: 50,
     classAverage: 50,
+    questionProvision: 'sometimes',
   });
   const [ratingLoading, setRatingLoading] = useState(false);
   const [ratingSubmitting, setRatingSubmitting] = useState(false);
@@ -1347,6 +1348,36 @@ export const App = () => {
                 );
               })}
 
+              <div style={{ borderTop: '1px solid #596795', paddingTop: '16px', display: 'grid', gap: '12px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
+                  <strong>Does this faculty provide Questions?</strong>
+                  <span style={styles.muted}>
+                    {Object.values(ratingSummary?.questionProvisionCounts ?? { no: 0, sometimes: 0, yes: 0 }).reduce((sum, value) => sum + value, 0)} responses
+                  </span>
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: '8px' }}>
+                  {([
+                    { value: 'no', label: 'No', color: '#e07862' },
+                    { value: 'sometimes', label: 'Sometimes', color: '#e2b85c' },
+                    { value: 'yes', label: 'Yes', color: '#65c99a' },
+                  ] as const).map((option) => {
+                    const counts = ratingSummary?.questionProvisionCounts ?? { no: 0, sometimes: 0, yes: 0 };
+                    const total = counts.no + counts.sometimes + counts.yes;
+                    const count = counts[option.value];
+                    const percentage = total > 0 ? Math.round((count / total) * 100) : 0;
+                    return (
+                      <div key={option.value} style={{ background: '#252d50', border: '1px solid #596795', borderRadius: '12px', padding: '12px 8px', textAlign: 'center' }}>
+                        <div style={{ color: option.color, fontSize: '0.9rem', fontWeight: 700 }}>{option.label}</div>
+                        <div style={{ fontSize: '1.45rem', fontWeight: 800, margin: '4px 0' }}>{count}</div>
+                        <div style={{ height: '5px', background: '#414b72', borderRadius: '99px', overflow: 'hidden' }}>
+                          <div style={{ height: '100%', width: percentage + '%', background: option.color, borderRadius: '99px' }} />
+                        </div>
+                        <div style={{ ...styles.muted, fontSize: '0.75rem', marginTop: '5px' }}>{percentage}%</div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
             </div>
             )}
 
@@ -1369,6 +1400,45 @@ export const App = () => {
                 )}
                 {ratingSummary?.eligibility.eligible && !ratingSummary.eligibility.hasRated && (
                   <form onSubmit={submitFacultyRating} style={{ display: 'grid', gap: '18px' }}>
+                    <fieldset style={{ border: 0, padding: 0, margin: 0, minWidth: 0 }}>
+                      <legend style={styles.label}>Does this faculty provide Questions?</legend>
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: '8px' }}>
+                        {([
+                          { value: 'no', label: 'No' },
+                          { value: 'sometimes', label: 'Sometimes' },
+                          { value: 'yes', label: 'Yes' },
+                        ] as const).map((option) => {
+                          const selected = ratingValues.questionProvision === option.value;
+                          return (
+                            <label key={option.value} style={{
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              gap: '7px',
+                              minHeight: '48px',
+                              padding: '8px 5px',
+                              borderRadius: '12px',
+                              border: selected ? '2px solid #8bb8ff' : '1px solid #596795',
+                              background: selected ? '#3b4b78' : '#252d50',
+                              color: '#ffffff',
+                              cursor: 'pointer',
+                              fontSize: 'clamp(0.78rem, 2.5vw, 0.95rem)',
+                              boxSizing: 'border-box',
+                            }}>
+                              <input
+                                type="radio"
+                                name="questionProvision"
+                                value={option.value}
+                                checked={selected}
+                                onChange={() => setRatingValues((current) => ({ ...current, questionProvision: option.value }))}
+                                style={{ accentColor: '#8bb8ff', margin: 0 }}
+                              />
+                              <span>{option.label}</span>
+                            </label>
+                          );
+                        })}
+                      </div>
+                    </fieldset>
                     {ratingLabels.map(({ key }) => {
                       const isClassAverage = key === 'classAverage';
                       const question =
