@@ -723,8 +723,14 @@ export const App = () => {
     setFacultyManagementError('');
     setFacultyEditMessage('');
     try {
-      const response = await fetch(`/api/mod/faculty/${encodeURIComponent(record.id)}`, { method: 'DELETE' });
-      const result = await response.json() as ModerationActionResponse;
+      const response = await fetch(`/api/mod/faculty/${encodeURIComponent(record.id)}/delete`, { method: 'POST' });
+      const raw = await response.text();
+      let result: ModerationActionResponse | ApiErrorResponse;
+      try {
+        result = JSON.parse(raw) as ModerationActionResponse | ApiErrorResponse;
+      } catch {
+        throw new Error(`Delete request failed (HTTP ${response.status}). Server response: ${raw.slice(0, 200) || 'empty response'}`);
+      }
       if (!response.ok || result.status !== 'success') throw new Error(result.status === 'error' ? result.message : 'Unable to delete faculty.');
       setFacultyEditMessage(result.message);
       if (editingFacultyId === record.id) setEditingFacultyId('');
@@ -784,21 +790,21 @@ export const App = () => {
     setCourseAdminError('');
     setCourseAdminMessage('');
     try {
-      const url = `/api/mod/courses/${encodeURIComponent(code)}`;
-      let response = await fetch(url, {
-        method: 'DELETE',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ confirmAssigned: false }),
-      });
-      let result = await response.json() as ModerationActionResponse | ApiErrorResponse;
+      const url = `/api/mod/courses/${encodeURIComponent(code)}/delete`;
+      const readResponse = async (response: Response): Promise<ModerationActionResponse | ApiErrorResponse> => {
+        const raw = await response.text();
+        try {
+          return JSON.parse(raw) as ModerationActionResponse | ApiErrorResponse;
+        } catch {
+          throw new Error(`Delete request failed (HTTP ${response.status}). Server response: ${raw.slice(0, 200) || 'empty response'}`);
+        }
+      };
+      let response = await fetch(url, { method: 'POST' });
+      let result = await readResponse(response);
       if (response.status === 409 && result.status === 'error') {
         if (!window.confirm(result.message)) return;
-        response = await fetch(url, {
-          method: 'DELETE',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ confirmAssigned: true }),
-        });
-        result = await response.json() as ModerationActionResponse | ApiErrorResponse;
+        response = await fetch(`${url}?confirmAssigned=true`, { method: 'POST' });
+        result = await readResponse(response);
       }
       if (!response.ok || result.status !== 'success') {
         throw new Error(result.status === 'error' ? result.message : 'Unable to delete course.');
