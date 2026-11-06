@@ -785,13 +785,32 @@ export const App = () => {
     setCourseAdminError('');
     setCourseAdminMessage('');
     try {
-      const response = await fetch(`/api/mod/courses/${encodeURIComponent(code)}`, { method: 'DELETE' });
-      const result = await response.json() as ModerationActionResponse;
-      if (!response.ok || result.status !== 'success') throw new Error(result.status === 'error' ? result.message : 'Unable to delete course.');
+      const url = `/api/mod/courses/${encodeURIComponent(code)}`;
+      let response = await fetch(url, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ confirmAssigned: false }),
+      });
+      let result = await response.json() as ModerationActionResponse | ApiErrorResponse;
+      if (response.status === 409 && result.status === 'error') {
+        if (!window.confirm(result.message)) return;
+        response = await fetch(url, {
+          method: 'DELETE',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ confirmAssigned: true }),
+        });
+        result = await response.json() as ModerationActionResponse | ApiErrorResponse;
+      }
+      if (!response.ok || result.status !== 'success') {
+        throw new Error(result.status === 'error' ? result.message : 'Unable to delete course.');
+      }
       setCourseAdminMessage(result.message);
-      await loadCoursesForManagement();
-    } catch (error) { setCourseAdminError(error instanceof Error ? error.message : 'Unable to delete course.'); }
-    finally { setCourseAdminBusy(false); }
+      await Promise.all([loadCoursesForManagement(), loadAllFacultyForModeration()]);
+    } catch (error) {
+      setCourseAdminError(error instanceof Error ? error.message : 'Unable to delete course.');
+    } finally {
+      setCourseAdminBusy(false);
+    }
   };
 
   const openAdminDashboard = () => {
