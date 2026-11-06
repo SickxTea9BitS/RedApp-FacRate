@@ -193,8 +193,22 @@ export const App = () => {
   const [editCourseSearch, setEditCourseSearch] = useState('');
   const [facultyEditBusy, setFacultyEditBusy] = useState(false);
   const [facultyEditMessage, setFacultyEditMessage] = useState('');
-  const [adminSection, setAdminSection] = useState<'menu' | 'faculty-requests' | 'course-requests' | 'faculties'>('menu');
+  const [adminSection, setAdminSection] = useState<'menu' | 'faculty-requests' | 'course-requests' | 'manage-menu' | 'manage-faculty' | 'create-faculty' | 'manage-course' | 'create-course'>('menu');
   const [facultyAdminSearch, setFacultyAdminSearch] = useState('');
+  const [newFacultyFirstName, setNewFacultyFirstName] = useState('');
+  const [newFacultyMiddleName, setNewFacultyMiddleName] = useState('');
+  const [newFacultyLastName, setNewFacultyLastName] = useState('');
+  const [newFacultySchool, setNewFacultySchool] = useState('');
+  const [newFacultyCourseCodes, setNewFacultyCourseCodes] = useState<string[]>([]);
+  const [newFacultyCourseSearch, setNewFacultyCourseSearch] = useState('');
+  const [newFacultyBusy, setNewFacultyBusy] = useState(false);
+  const [courseAdminSearch, setCourseAdminSearch] = useState('');
+  const [editingCourseCode, setEditingCourseCode] = useState('');
+  const [editCourseCode, setEditCourseCode] = useState('');
+  const [newCourseCode, setNewCourseCode] = useState('');
+  const [courseAdminBusy, setCourseAdminBusy] = useState(false);
+  const [courseAdminMessage, setCourseAdminMessage] = useState('');
+  const [courseAdminError, setCourseAdminError] = useState('');
   const [facultyCourseRequestCodes, setFacultyCourseRequestCodes] = useState<string[]>([]);
   const [facultyCourseRequestSearch, setFacultyCourseRequestSearch] = useState('');
   const [facultyCourseRequestMessage, setFacultyCourseRequestMessage] = useState('');
@@ -676,6 +690,108 @@ export const App = () => {
     } finally {
       setFacultyEditBusy(false);
     }
+  };
+
+  const createFacultyDirectly = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setFacultyManagementError('');
+    setFacultyEditMessage('');
+    setNewFacultyBusy(true);
+    try {
+      const response = await fetch('/api/mod/faculty', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ firstName: newFacultyFirstName, middleName: newFacultyMiddleName, lastName: newFacultyLastName, school: newFacultySchool, courseCodes: newFacultyCourseCodes }),
+      });
+      const result = await response.json() as ModerationActionResponse;
+      if (!response.ok || result.status !== 'success') throw new Error(result.status === 'error' ? result.message : 'Unable to create faculty.');
+      setFacultyEditMessage(result.message);
+      setNewFacultyFirstName('');
+      setNewFacultyMiddleName('');
+      setNewFacultyLastName('');
+      setNewFacultySchool('');
+      setNewFacultyCourseCodes([]);
+      setNewFacultyCourseSearch('');
+      await loadAllFacultyForModeration();
+    } catch (error) {
+      setFacultyManagementError(error instanceof Error ? error.message : 'Unable to create faculty.');
+    } finally { setNewFacultyBusy(false); }
+  };
+
+  const deleteFacultyDirectly = async (record: FacultyRecord) => {
+    if (!window.confirm(`Delete ${getFullName(record)} and all of their ratings? This cannot be undone.`)) return;
+    setFacultyManagementError('');
+    setFacultyEditMessage('');
+    try {
+      const response = await fetch(`/api/mod/faculty/${encodeURIComponent(record.id)}`, { method: 'DELETE' });
+      const result = await response.json() as ModerationActionResponse;
+      if (!response.ok || result.status !== 'success') throw new Error(result.status === 'error' ? result.message : 'Unable to delete faculty.');
+      setFacultyEditMessage(result.message);
+      if (editingFacultyId === record.id) setEditingFacultyId('');
+      await loadAllFacultyForModeration();
+    } catch (error) {
+      setFacultyManagementError(error instanceof Error ? error.message : 'Unable to delete faculty.');
+    }
+  };
+
+  const loadCoursesForManagement = async () => {
+    setCourseAdminError('');
+    try {
+      const response = await fetch('/api/courses');
+      const result = await response.json() as CourseListResponse | ApiErrorResponse;
+      if (!response.ok || result.status !== 'success') throw new Error(result.status === 'error' ? result.message : 'Unable to load courses.');
+      setAvailableCourses(result.courses);
+    } catch (error) {
+      setCourseAdminError(error instanceof Error ? error.message : 'Unable to load courses.');
+    }
+  };
+
+  const saveCourseEdit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!editingCourseCode) return;
+    setCourseAdminBusy(true);
+    setCourseAdminError('');
+    setCourseAdminMessage('');
+    try {
+      const response = await fetch(`/api/mod/courses/${encodeURIComponent(editingCourseCode)}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ code: editCourseCode }) });
+      const result = await response.json() as ModerationActionResponse;
+      if (!response.ok || result.status !== 'success') throw new Error(result.status === 'error' ? result.message : 'Unable to update course.');
+      setCourseAdminMessage(result.message);
+      setEditingCourseCode('');
+      await loadCoursesForManagement();
+    } catch (error) { setCourseAdminError(error instanceof Error ? error.message : 'Unable to update course.'); }
+    finally { setCourseAdminBusy(false); }
+  };
+
+  const createCourseDirectly = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setCourseAdminBusy(true);
+    setCourseAdminError('');
+    setCourseAdminMessage('');
+    try {
+      const response = await fetch('/api/mod/courses', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ code: newCourseCode }) });
+      const result = await response.json() as ModerationActionResponse;
+      if (!response.ok || result.status !== 'success') throw new Error(result.status === 'error' ? result.message : 'Unable to create course.');
+      setCourseAdminMessage(result.message);
+      setNewCourseCode('');
+      await loadCoursesForManagement();
+    } catch (error) { setCourseAdminError(error instanceof Error ? error.message : 'Unable to create course.'); }
+    finally { setCourseAdminBusy(false); }
+  };
+
+  const deleteCourseDirectly = async (code: string) => {
+    if (!window.confirm(`Delete course ${code}? This cannot be undone.`)) return;
+    setCourseAdminBusy(true);
+    setCourseAdminError('');
+    setCourseAdminMessage('');
+    try {
+      const response = await fetch(`/api/mod/courses/${encodeURIComponent(code)}`, { method: 'DELETE' });
+      const result = await response.json() as ModerationActionResponse;
+      if (!response.ok || result.status !== 'success') throw new Error(result.status === 'error' ? result.message : 'Unable to delete course.');
+      setCourseAdminMessage(result.message);
+      await loadCoursesForManagement();
+    } catch (error) { setCourseAdminError(error instanceof Error ? error.message : 'Unable to delete course.'); }
+    finally { setCourseAdminBusy(false); }
   };
 
   const openAdminDashboard = () => {
@@ -1813,16 +1929,33 @@ export const App = () => {
                   <span style={{ ...styles.muted, marginTop: '7px' }}>{moderatorCourseRequests.length + moderatorFacultyCourseRequests.length ? `${moderatorCourseRequests.length + moderatorFacultyCourseRequests.length} pending request(s)` : 'No pending requests'}</span>
                   <span style={{ color: '#b4d0ff', marginTop: '10px' }}>Open requests →</span>
                 </button>
-                <button type="button" className="admin-menu-card" style={{ ...styles.card, cursor: 'pointer', textAlign: 'left', padding: '22px', display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: '9px', minHeight: '126px' }} onClick={() => { setAdminSection('faculties'); void loadAllFacultyForModeration(); }}>
-                  <strong style={{ fontSize: '1.1rem' }}>Edit Faculties</strong>
-                  <span style={{ ...styles.muted, marginTop: '7px' }}>{allFacultyForModeration.length} faculty member(s) in directory</span>
-                  <span style={{ color: '#b4d0ff', marginTop: '10px' }}>Browse faculty →</span>
+                <button type="button" className="admin-menu-card" style={{ ...styles.card, cursor: 'pointer', textAlign: 'left', padding: '22px', display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: '9px', minHeight: '126px' }} onClick={() => setAdminSection('manage-menu')}>
+                  <strong style={{ fontSize: '1.1rem' }}>Manage Faculty &amp; Courses</strong>
+                  <span style={{ ...styles.muted, marginTop: '7px' }}>Create, edit, and delete directory entries</span>
+                  <span style={{ color: '#b4d0ff', marginTop: '10px' }}>Open management →</span>
                 </button>
               </div>
             )}
 
             {adminSection !== 'menu' && (
-              <button type="button" style={{ ...styles.secondaryButton, marginBottom: '18px', padding: '8px 14px' }} onClick={() => setAdminSection('menu')}>← Dashboard</button>
+              <button type="button" style={{ ...styles.secondaryButton, marginBottom: '18px', padding: '8px 14px' }} onClick={() => setAdminSection(adminSection === 'manage-menu' || adminSection === 'manage-faculty' || adminSection === 'create-faculty' || adminSection === 'manage-course' || adminSection === 'create-course' ? (adminSection === 'manage-menu' ? 'menu' : 'manage-menu') : 'menu')}>← {adminSection === 'manage-menu' ? 'Dashboard' : ['manage-faculty','create-faculty','manage-course','create-course'].includes(adminSection) ? 'Manage Faculty & Courses' : 'Dashboard'}</button>
+            )}
+
+            {adminSection === 'manage-menu' && (
+              <div className="admin-menu-grid" style={{ display: 'grid', gap: '14px', marginTop: '10px' }}>
+                <button type="button" className="admin-menu-card" style={{ ...styles.card, cursor: 'pointer', textAlign: 'left', padding: '20px', display: 'grid', gap: '8px' }} onClick={() => { setAdminSection('manage-faculty'); void loadAllFacultyForModeration(); }}>
+                  <strong>Manage Faculty</strong><span style={styles.muted}>Edit or delete existing faculty members</span>
+                </button>
+                <button type="button" className="admin-menu-card" style={{ ...styles.card, cursor: 'pointer', textAlign: 'left', padding: '20px', display: 'grid', gap: '8px' }} onClick={() => { setAdminSection('create-faculty'); void loadAvailableCourses(); }}>
+                  <strong>Create Faculty</strong><span style={styles.muted}>Add a faculty member directly to the directory</span>
+                </button>
+                <button type="button" className="admin-menu-card" style={{ ...styles.card, cursor: 'pointer', textAlign: 'left', padding: '20px', display: 'grid', gap: '8px' }} onClick={() => { setAdminSection('manage-course'); void loadCoursesForManagement(); }}>
+                  <strong>Manage Course</strong><span style={styles.muted}>Edit or delete existing courses</span>
+                </button>
+                <button type="button" className="admin-menu-card" style={{ ...styles.card, cursor: 'pointer', textAlign: 'left', padding: '20px', display: 'grid', gap: '8px' }} onClick={() => { setAdminSection('create-course'); setCourseAdminMessage(''); setCourseAdminError(''); }}>
+                  <strong>Create Course</strong><span style={styles.muted}>Add a course directly to the directory</span>
+                </button>
+              </div>
             )}
 
             {adminSection === 'faculty-requests' && (
@@ -2234,7 +2367,7 @@ export const App = () => {
               </>
             )}
 
-            {adminSection === 'faculties' && (
+            {adminSection === 'manage-faculty' && (
               <>
             <div style={{ borderTop: '1px solid #56618d', marginTop: '30px', paddingTop: '24px' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px', marginBottom: '16px' }}>
@@ -2255,7 +2388,10 @@ export const App = () => {
                       <p style={{ ...styles.muted, margin: '4px 0' }}>School: {record.school}</p>
                       <p style={{ ...styles.muted, margin: '4px 0' }}>Courses: {(record.courseCodes ?? []).join(', ') || 'None'}</p>
                     </div>
-                    <button type="button" style={{ ...styles.secondaryButton, padding: '7px 12px' }} onClick={() => openFacultyEditor(record)}>Edit</button>
+                    <div style={{ display: 'flex', gap: '7px', flexWrap: 'wrap' }}>
+                      <button type="button" style={{ ...styles.secondaryButton, padding: '7px 12px' }} onClick={() => openFacultyEditor(record)}>Edit</button>
+                      <button type="button" style={{ ...styles.secondaryButton, padding: '7px 12px', borderColor: '#d04444', color: '#ff9999' }} onClick={() => void deleteFacultyDirectly(record)}>Delete</button>
+                    </div>
                   </div>
                   {editingFacultyId === record.id && (
                     <form onSubmit={saveFacultyEdit} style={{ display: 'grid', gap: '10px', borderTop: '1px solid #56618d', paddingTop: '12px' }}>
@@ -2296,6 +2432,48 @@ export const App = () => {
               </>
             )}
 
+            {adminSection === 'create-faculty' && (
+              <section style={{ ...styles.card, display: 'grid', gap: '12px' }}>
+                <h2 style={{ margin: 0 }}>Create Faculty</h2>
+                {facultyEditMessage && <p role="status" style={{ color: '#8de0ad' }}>{facultyEditMessage}</p>}
+                {facultyManagementError && <p role="alert" style={{ color: '#ffb3b3' }}>{facultyManagementError}</p>}
+                <form onSubmit={createFacultyDirectly} style={{ display: 'grid', gap: '10px' }}>
+                  <label style={styles.label}>First Name *</label><input style={styles.input} value={newFacultyFirstName} onChange={e=>setNewFacultyFirstName(e.target.value)} maxLength={60} required />
+                  <label style={styles.label}>Middle Name</label><input style={styles.input} value={newFacultyMiddleName} onChange={e=>setNewFacultyMiddleName(e.target.value)} maxLength={60} />
+                  <label style={styles.label}>Last Name *</label><input style={styles.input} value={newFacultyLastName} onChange={e=>setNewFacultyLastName(e.target.value)} maxLength={60} required />
+                  <label style={styles.label}>School *</label><select style={styles.input} value={newFacultySchool} onChange={e=>setNewFacultySchool(e.target.value)} required><option value="">Select a school</option>{SCHOOLS.map(s=><option key={s} value={s}>{s}</option>)}</select>
+                  <label style={styles.label}>Assigned Courses (Optional)</label>
+                  <input style={styles.input} placeholder="Search approved course codes..." value={newFacultyCourseSearch} onChange={e=>setNewFacultyCourseSearch(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g,'').slice(0,7))} />
+                  <div style={{display:'flex',flexWrap:'wrap',gap:'7px'}}>{newFacultyCourseCodes.map(code=><span key={code} style={{background:'#3a4d7f',padding:'5px 9px',borderRadius:'15px'}}>{code} <button type="button" onClick={()=>setNewFacultyCourseCodes(v=>v.filter(x=>x!==code))}>×</button></span>)}</div>
+                  {availableCourses.filter(course=>!newFacultyCourseCodes.includes(course.code)).filter(course=>!newFacultyCourseSearch||course.code.includes(newFacultyCourseSearch)).slice(0,12).map(course=><button key={course.code} type="button" style={{...styles.secondaryButton,textAlign:'left'}} onClick={()=>setNewFacultyCourseCodes(v=>[...v,course.code])}>+ {course.code}</button>)}
+                  <button type="submit" style={styles.button} disabled={newFacultyBusy}>{newFacultyBusy?'Creating...':'Create Faculty'}</button>
+                </form>
+              </section>
+            )}
+            {adminSection === 'manage-course' && (
+              <section style={{display:'grid',gap:'12px'}}>
+                <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',gap:'10px'}}><h2 style={{margin:0}}>Manage Courses ({availableCourses.length})</h2><button type="button" style={{...styles.secondaryButton,padding:'8px 12px'}} onClick={()=>void loadCoursesForManagement()}>Refresh</button></div>
+                {courseAdminMessage && <p role="status" style={{color:'#8de0ad'}}>{courseAdminMessage}</p>}
+                {courseAdminError && <p role="alert" style={{color:'#ffb3b3'}}>{courseAdminError}</p>}
+                <input style={styles.input} placeholder="Search course code..." value={courseAdminSearch} onChange={e=>setCourseAdminSearch(e.target.value.toUpperCase())}/>
+                {availableCourses.filter(course=>course.code.includes(courseAdminSearch.trim())).map(course=><article key={course.code} style={{...styles.card,display:'grid',gap:'10px'}}>
+                  {editingCourseCode===course.code ? <form onSubmit={saveCourseEdit} style={{display:'flex',gap:'8px',flexWrap:'wrap'}}><input style={{...styles.input,flex:'1 1 180px'}} value={editCourseCode} onChange={e=>setEditCourseCode(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g,'').slice(0,7))} required/><button type="submit" style={styles.button} disabled={courseAdminBusy}>Save</button><button type="button" style={styles.secondaryButton} onClick={()=>setEditingCourseCode('')}>Cancel</button></form> : <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',gap:'10px'}}><strong>{course.code}</strong><div style={{display:'flex',gap:'7px'}}><button type="button" style={{...styles.secondaryButton,padding:'7px 12px'}} onClick={()=>{setEditingCourseCode(course.code);setEditCourseCode(course.code)}}>Edit</button><button type="button" style={{...styles.secondaryButton,padding:'7px 12px',borderColor:'#d04444',color:'#ff9999'}} onClick={()=>void deleteCourseDirectly(course.code)} disabled={courseAdminBusy}>Delete</button></div></div>}
+                </article>)}
+              </section>
+            )}
+            {adminSection === 'create-course' && (
+              <section style={{...styles.card,display:'grid',gap:'12px'}}>
+                <h2 style={{margin:0}}>Create Course</h2>
+                {courseAdminMessage && <p role="status" style={{color:'#8de0ad'}}>{courseAdminMessage}</p>}
+                {courseAdminError && <p role="alert" style={{color:'#ffb3b3'}}>{courseAdminError}</p>}
+                <form onSubmit={createCourseDirectly} style={{display:'grid',gap:'10px'}}>
+                  <label style={styles.label}>Course Code *</label>
+                  <input style={styles.input} value={newCourseCode} onChange={e=>setNewCourseCode(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g,'').slice(0,7))} placeholder="MAT1001" pattern="[A-Z]{3}[0-9]{4}" required/>
+                  <p style={styles.muted}>Enter three letters followed by four digits.</p>
+                  <button type="submit" style={styles.button} disabled={courseAdminBusy}>{courseAdminBusy?'Creating...':'Create Course'}</button>
+                </form>
+              </section>
+            )}
             {adminSection === 'course-requests' && (
               <>
             <div style={{ borderTop: '1px solid #56618d', marginTop: '30px', paddingTop: '24px' }}>
