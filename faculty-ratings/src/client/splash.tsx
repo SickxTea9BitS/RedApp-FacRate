@@ -780,7 +780,6 @@ export const App = () => {
   };
 
   const deleteCourseDirectly = async (code: string) => {
-    if (!window.confirm(`Delete course ${code}? This cannot be undone.`)) return;
     setCourseAdminBusy(true);
     setCourseAdminError('');
     setCourseAdminMessage('');
