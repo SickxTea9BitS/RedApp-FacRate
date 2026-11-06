@@ -1110,12 +1110,15 @@ const RATING_FIELDS = [
   'classAverage',
 ] as const;
 
+type QuestionProvision = 'no' | 'sometimes' | 'yes';
+
 type RatingValues = {
   teaching: number;
   internalMarking: number;
   examEvaluation: number;
   overallRecommendation: number;
   classAverage: number;
+  questionProvision: QuestionProvision;
 };
 
 const getRatingEligibility = async () => {
@@ -1169,8 +1172,9 @@ const getRatingEligibility = async () => {
   };
 };
 
-type StoredRatingValues = Omit<RatingValues, 'classAverage'> & {
+type StoredRatingValues = Omit<RatingValues, 'classAverage' | 'questionProvision'> & {
   classAverage?: number;
+  questionProvision?: QuestionProvision;
 };
 
 const isValidStoredRating = (value: unknown): value is StoredRatingValues => {
@@ -1192,11 +1196,18 @@ const isValidStoredRating = (value: unknown): value is StoredRatingValues => {
       Number.isInteger(record.classAverage) &&
       record.classAverage >= 0 &&
       record.classAverage <= 100);
-  return requiredValid && classAverageValid;
+  const questionProvisionValid =
+    record.questionProvision === undefined ||
+    record.questionProvision === 'no' ||
+    record.questionProvision === 'sometimes' ||
+    record.questionProvision === 'yes';
+  return requiredValid && classAverageValid && questionProvisionValid;
 };
 
 const isValidRatingValues = (value: unknown): value is RatingValues =>
-  isValidStoredRating(value) && typeof value.classAverage === 'number';
+  isValidStoredRating(value) &&
+  typeof value.classAverage === 'number' &&
+  (value as Record<string, unknown>).questionProvision !== undefined;
 
 api.get('/faculty/:id/ratings', async (c) => {
   try {
@@ -1223,7 +1234,17 @@ api.get('/faculty/:id/ratings', async (c) => {
     });
 
     const count = ratings.length;
-    const averages: RatingValues = {
+    const questionProvisionCounts: Record<QuestionProvision, number> = {
+      no: 0,
+      sometimes: 0,
+      yes: 0,
+    };
+    for (const rating of ratings) {
+      if (rating.questionProvision) {
+        questionProvisionCounts[rating.questionProvision] += 1;
+      }
+    }
+    const averages = {
       teaching: 0,
       internalMarking: 0,
       examEvaluation: 0,
@@ -1255,6 +1276,7 @@ api.get('/faculty/:id/ratings', async (c) => {
       status: 'success' as const,
       count,
       averages,
+      questionProvisionCounts,
       eligibility: {
         loggedIn: eligibility.loggedIn,
         eligible: eligibility.eligible,
@@ -1310,7 +1332,7 @@ api.post('/faculty/:id/ratings', async (c) => {
       return c.json<ApiErrorResponse>(
         {
           status: 'error',
-          message: 'All five ratings must be whole numbers from 0 to 100.',
+          message: 'All five numeric ratings must be whole numbers from 0 to 100, and you must select whether this faculty provides questions.',
         },
         400
       );
