@@ -209,6 +209,7 @@ export const App = () => {
   const [courseAdminBusy, setCourseAdminBusy] = useState(false);
   const [courseAdminMessage, setCourseAdminMessage] = useState('');
   const [courseAdminError, setCourseAdminError] = useState('');
+  const [pendingDelete, setPendingDelete] = useState<{ type: 'faculty'; record: FacultyRecord } | { type: 'course'; code: string; message: string } | null>(null);
   const [facultyCourseRequestCodes, setFacultyCourseRequestCodes] = useState<string[]>([]);
   const [facultyCourseRequestSearch, setFacultyCourseRequestSearch] = useState('');
   const [facultyCourseRequestMessage, setFacultyCourseRequestMessage] = useState('');
@@ -399,7 +400,7 @@ export const App = () => {
     }
   };
 
-  const ratingLabels: { key: keyof FacultyRatingValues; label: string }[] = [
+  const ratingLabels: { key: keyof FacultyRatingSummary['averages']; label: string }[] = [
     { key: 'teaching', label: 'Teaching' },
     { key: 'internalMarking', label: 'Internal Marking' },
     { key: 'examEvaluation', label: 'Exam Evaluation' },
@@ -718,26 +719,10 @@ export const App = () => {
     } finally { setNewFacultyBusy(false); }
   };
 
-  const deleteFacultyDirectly = async (record: FacultyRecord) => {
-    if (!window.confirm(`Delete ${getFullName(record)} and all of their ratings? This cannot be undone.`)) return;
+  const deleteFacultyDirectly = (record: FacultyRecord) => {
     setFacultyManagementError('');
     setFacultyEditMessage('');
-    try {
-      const response = await fetch(`/api/mod/faculty/${encodeURIComponent(record.id)}/delete`, { method: 'POST' });
-      const raw = await response.text();
-      let result: ModerationActionResponse | ApiErrorResponse;
-      try {
-        result = JSON.parse(raw) as ModerationActionResponse | ApiErrorResponse;
-      } catch {
-        throw new Error(`Delete request failed (HTTP ${response.status}). Server response: ${raw.slice(0, 200) || 'empty response'}`);
-      }
-      if (!response.ok || result.status !== 'success') throw new Error(result.status === 'error' ? result.message : 'Unable to delete faculty.');
-      setFacultyEditMessage(result.message);
-      if (editingFacultyId === record.id) setEditingFacultyId('');
-      await loadAllFacultyForModeration();
-    } catch (error) {
-      setFacultyManagementError(error instanceof Error ? error.message : 'Unable to delete faculty.');
-    }
+    setPendingDelete({ type: 'faculty', record });
   };
 
   const loadCoursesForManagement = async () => {
@@ -790,21 +775,74 @@ export const App = () => {
     setCourseAdminError('');
     setCourseAdminMessage('');
     try {
-      const url = `/api/mod/courses/${encodeURIComponent(code)}/delete`;
-      const readResponse = async (response: Response): Promise<ModerationActionResponse | ApiErrorResponse> => {
+      const response = await fetch(`/api/mod/courses/${encodeURIComponent(code)}/delete`, { method: 'POST' });
+      const raw = await response.text();
+      let result: ModerationActionResponse | ApiErrorResponse;
+      try {
+        result = JSON.parse(raw) as ModerationActionResponse | ApiErrorResponse;
+      } catch {
+        throw new Error(`Delete request failed (HTTP ${response.status}). Server response: ${raw.slice(0, 200) || 'empty response'}`);
+      }
+
+      if (response.status === 409 && result.status === 'error') {
+        setPendingDelete({ type: 'course', code, message: result.message });
+        return;
+      }
+      if (!response.ok || result.status !== 'success') {
+        throw new Error(result.status === 'error' ? result.message : 'Unable to delete course.');
+      }
+      setCourseAdminMessage(result.message);
+      await Promise.all([loadCoursesForManagement(), loadAllFacultyForModeration()]);
+    } catch (error) {
+      setCourseAdminError(error instanceof Error ? error.message : 'Unable to delete course.');
+    } finally {
+      setCourseAdminBusy(false);
+    }
+  };
+
+  const confirmPendingDelete = async () => {
+    if (!pendingDelete) return;
+    const target = pendingDelete;
+    setPendingDelete(null);
+
+    if (target.type === 'faculty') {
+      setFacultyManagementError('');
+      setFacultyEditMessage('');
+      setFacultyEditBusy(true);
+      try {
+        const response = await fetch(`/api/mod/faculty/${encodeURIComponent(target.record.id)}/delete`, { method: 'POST' });
         const raw = await response.text();
+        let result: ModerationActionResponse | ApiErrorResponse;
         try {
-          return JSON.parse(raw) as ModerationActionResponse | ApiErrorResponse;
+          result = JSON.parse(raw) as ModerationActionResponse | ApiErrorResponse;
         } catch {
           throw new Error(`Delete request failed (HTTP ${response.status}). Server response: ${raw.slice(0, 200) || 'empty response'}`);
         }
-      };
-      let response = await fetch(url, { method: 'POST' });
-      let result = await readResponse(response);
-      if (response.status === 409 && result.status === 'error') {
-        if (!window.confirm(result.message)) return;
-        response = await fetch(`${url}?confirmAssigned=true`, { method: 'POST' });
-        result = await readResponse(response);
+        if (!response.ok || result.status !== 'success') {
+          throw new Error(result.status === 'error' ? result.message : 'Unable to delete faculty.');
+        }
+        setFacultyEditMessage(result.message);
+        if (editingFacultyId === target.record.id) setEditingFacultyId('');
+        await loadAllFacultyForModeration();
+      } catch (error) {
+        setFacultyManagementError(error instanceof Error ? error.message : 'Unable to delete faculty.');
+      } finally {
+        setFacultyEditBusy(false);
+      }
+      return;
+    }
+
+    setCourseAdminBusy(true);
+    setCourseAdminError('');
+    setCourseAdminMessage('');
+    try {
+      const response = await fetch(`/api/mod/courses/${encodeURIComponent(target.code)}/delete?confirmAssigned=true`, { method: 'POST' });
+      const raw = await response.text();
+      let result: ModerationActionResponse | ApiErrorResponse;
+      try {
+        result = JSON.parse(raw) as ModerationActionResponse | ApiErrorResponse;
+      } catch {
+        throw new Error(`Delete request failed (HTTP ${response.status}). Server response: ${raw.slice(0, 200) || 'empty response'}`);
       }
       if (!response.ok || result.status !== 'success') {
         throw new Error(result.status === 'error' ? result.message : 'Unable to delete course.');
@@ -2599,6 +2637,59 @@ export const App = () => {
           </section>
         )}
       </main>
+      {pendingDelete && (
+        <div
+          role="presentation"
+          onClick={() => setPendingDelete(null)}
+          style={{
+            position: 'fixed',
+            inset: 0,
+            zIndex: 1000,
+            display: 'grid',
+            placeItems: 'center',
+            padding: '20px',
+            background: 'rgba(0, 0, 0, 0.72)',
+          }}
+        >
+          <section
+            role="alertdialog"
+            aria-modal="true"
+            aria-labelledby="delete-confirmation-title"
+            onClick={(event) => event.stopPropagation()}
+            style={{
+              width: 'min(100%, 480px)',
+              display: 'grid',
+              gap: '16px',
+              padding: '22px',
+              border: '1px solid #6575a8',
+              borderRadius: '16px',
+              background: '#202747',
+              color: '#fff',
+              boxShadow: '0 20px 60px rgba(0,0,0,.45)',
+            }}
+          >
+            <h2 id="delete-confirmation-title" style={{ margin: 0 }}>Confirm deletion</h2>
+            <p style={{ margin: 0, whiteSpace: 'pre-wrap', lineHeight: 1.55 }}>
+              {pendingDelete.type === 'faculty'
+                ? `Delete ${getFullName(pendingDelete.record)} and all of their ratings? This cannot be undone.`
+                : pendingDelete.message}
+            </p>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', flexWrap: 'wrap' }}>
+              <button type="button" style={styles.secondaryButton} onClick={() => setPendingDelete(null)}>
+                Cancel
+              </button>
+              <button
+                type="button"
+                style={{ ...styles.button, backgroundColor: '#b83232' }}
+                onClick={() => void confirmPendingDelete()}
+                disabled={facultyEditBusy || courseAdminBusy}
+              >
+                {facultyEditBusy || courseAdminBusy ? 'Deleting...' : 'Delete permanently'}
+              </button>
+            </div>
+          </section>
+        </div>
+      )}
     </div>
   );
 };
