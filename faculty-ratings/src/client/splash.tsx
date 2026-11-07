@@ -400,7 +400,7 @@ export const App = () => {
     }
   };
 
-  const ratingLabels: { key: keyof FacultyRatingValues; label: string }[] = [
+  const ratingLabels: { key: keyof FacultyRatingSummary['averages']; label: string }[] = [
     { key: 'teaching', label: 'Teaching' },
     { key: 'internalMarking', label: 'Internal Marking' },
     { key: 'examEvaluation', label: 'Exam Evaluation' },
