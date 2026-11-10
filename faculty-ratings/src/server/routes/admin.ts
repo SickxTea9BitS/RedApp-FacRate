@@ -71,6 +71,13 @@ const writeLog = async (
   await redis.zAdd(key, { member: JSON.stringify(entry), score: entry.timestamp });
 };
 
+const readAllLogs = async (key: string) => {
+  const members = await redis.zRange(key, 0, -1, { by: 'rank', reverse: true });
+  return members.flatMap(({ member }) => {
+    try { return [JSON.parse(member) as LogEntry]; } catch { return []; }
+  });
+};
+
 const readLogPage = async (key: string, page: number, pageSize: number) => {
   const total = await redis.zCard(key);
   const start = (page - 1) * pageSize;
@@ -212,9 +219,9 @@ admin.get('/logs/export', async (c) => {
   const actor = await requireOwner();
   if (!actor) return c.json({ status: 'error', message: 'Owner access is required.' }, 403);
   const [moderator, adminLogs, security] = await Promise.all([
-    readLogPage(MOD_LOG_KEY, 1, 100),
-    readLogPage(ADMIN_LOG_KEY, 1, 100),
-    readLogPage(SECURITY_LOG_KEY, 1, 100),
+    readAllLogs(MOD_LOG_KEY),
+    readAllLogs(ADMIN_LOG_KEY),
+    readAllLogs(SECURITY_LOG_KEY),
   ]);
   const payload = JSON.stringify({ exportedAt: Date.now(), moderator, admin: adminLogs, security }, null, 2);
   await writeLog(ADMIN_LOG_KEY, actor, 'logs.export', { bytes: payload.length });
