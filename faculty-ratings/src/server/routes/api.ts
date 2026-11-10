@@ -230,10 +230,22 @@ api.get('/faculty', async (c) => {
       })
     );
 
+    const publicFaculty: FacultyRecord[] = faculty.map((record) => ({
+      id: record.id,
+      firstName: record.firstName,
+      middleName: record.middleName,
+      lastName: record.lastName,
+      school: record.school,
+      courseCodes: record.courseCodes,
+      createdAt: record.createdAt,
+      ratingCount: record.ratingCount,
+      hasRated: record.hasRated,
+    }));
+
     return c.json<FacultyListResponse>({
       status: 'success',
-      faculty,
-      total: faculty.length,
+      faculty: publicFaculty,
+      total: publicFaculty.length,
     });
   } catch (error) {
     console.error('Faculty list error:', error);
