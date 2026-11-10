@@ -66,13 +66,43 @@ api.use('/mod/*', async (c, next) => {
   const actorId = context.userId ? normalizeRedditId(context.userId) : '';
   const actorUsername = (await reddit.getCurrentUsername()) ?? 'unknown';
   const requestBody = await c.req.raw.clone().text().catch(() => '');
+  const normalizedPath = c.req.path.replace(/^\/api/, '');
+  const target = normalizedPath.match(/^\/mod\/(faculty|courses|requests|course-requests|faculty-course-requests)\/([^/]+)/);
+  let before: unknown = null;
+  if (target) {
+    const [collection, id] = target.slice(1);
+    const key = collection === 'faculty' ? FACULTY_HASH_KEY
+      : collection === 'courses' ? COURSES_HASH_KEY
+      : collection === 'requests' ? REQUESTS_HASH_KEY
+      : collection === 'course-requests' ? COURSE_REQUESTS_HASH_KEY
+      : FACULTY_COURSE_TAG_REQUESTS_HASH_KEY;
+    before = await redis.hGet(key, id).catch(() => null);
+    if (typeof before === 'string') {
+      try { before = JSON.parse(before); } catch { /* Keep malformed source text for the audit record. */ }
+    }
+  }
   await next();
   if (!actorId) return;
+  let after: unknown = null;
+  if (target) {
+    const [collection, id] = target.slice(1);
+    const key = collection === 'faculty' ? FACULTY_HASH_KEY
+      : collection === 'courses' ? COURSES_HASH_KEY
+      : collection === 'requests' ? REQUESTS_HASH_KEY
+      : collection === 'course-requests' ? COURSE_REQUESTS_HASH_KEY
+      : FACULTY_COURSE_TAG_REQUESTS_HASH_KEY;
+    after = await redis.hGet(key, id).catch(() => null);
+    if (typeof after === 'string') {
+      try { after = JSON.parse(after); } catch { /* Keep malformed source text for the audit record. */ }
+    }
+  }
+  let parsedRequest: unknown = requestBody.slice(0, 4000);
+  try { parsedRequest = requestBody ? JSON.parse(requestBody) : null; } catch { /* Keep raw request text. */ }
   const entry = {
     id: randomUUID(), actorId, actorUsername,
-    action: c.req.method.toLowerCase() + ' ' + c.req.path,
+    action: c.req.method.toLowerCase() + ' ' + normalizedPath,
     timestamp: Date.now(),
-    details: { path: c.req.path, method: c.req.method, request: requestBody.slice(0, 4000) },
+    details: { path: normalizedPath, method: c.req.method, request: parsedRequest, before, after },
     result: c.res.status < 400 ? 'success' : 'failure',
   };
   try {
