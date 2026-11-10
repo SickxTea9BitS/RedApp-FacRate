@@ -151,6 +151,8 @@ const getModerator = async () => {
       return null;
     }
 
+    if (await hasAdminAccess()) return user;
+
     const subreddit = await reddit.getCurrentSubreddit();
     const permissions = await user.getModPermissionsForSubreddit(
       subreddit.name
@@ -183,7 +185,8 @@ api.get('/faculty', async (c) => {
       );
     }
 
-    await ensureFacultyIds();\n    const storedRecords = await redis.hGetAll(FACULTY_HASH_KEY);
+    await ensureFacultyIds();
+    const storedRecords = await redis.hGetAll(FACULTY_HASH_KEY);
 
     const currentUserId = context.userId;
 
