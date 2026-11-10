@@ -27,6 +27,60 @@ const REQUESTS_HASH_KEY = 'faculty:requests';
 const COURSES_HASH_KEY = 'courses:records';
 const COURSE_REQUESTS_HASH_KEY = 'courses:requests';
 const FACULTY_COURSE_TAG_REQUESTS_HASH_KEY = 'faculty:course-tag-requests';
+const OWNER_REDDIT_ID = '135m5v7osr';
+const ADMIN_USERS_KEY = 'admin:users';
+const MOD_LOG_KEY = 'logs:moderator';
+
+const normalizeRedditId = (value: string) => value.replace(/^t2_/, '').trim();
+
+const nextFacultyId = async () => {
+  const sequence = await redis.incrBy('faculty:id-counter', 1);
+  return 'VITBFAC' + String(sequence).padStart(4, '0');
+};
+
+const ensureFacultyIds = async () => {
+  const records = await redis.hGetAll(FACULTY_HASH_KEY);
+  for (const [id, value] of Object.entries(records)) {
+    try {
+      const record = JSON.parse(value) as FacultyRecord;
+      if (!record.facultyId) {
+        const facultyId = await nextFacultyId();
+        await redis.hSet(FACULTY_HASH_KEY, { [id]: JSON.stringify({ ...record, facultyId }) });
+      }
+    } catch {
+      continue;
+    }
+  }
+};
+
+const hasAdminAccess = async () => {
+  const userId = context.userId;
+  if (!userId) return false;
+  const normalizedId = normalizeRedditId(userId);
+  if (normalizedId === OWNER_REDDIT_ID) return true;
+  return Boolean(await redis.hGet(ADMIN_USERS_KEY, normalizedId));
+};
+
+api.use('/mod/*', async (c, next) => {
+  if (c.req.method === 'GET') return next();
+  const actorId = context.userId ? normalizeRedditId(context.userId) : '';
+  const actorUsername = (await reddit.getCurrentUsername()) ?? 'unknown';
+  const requestBody = await c.req.raw.clone().text().catch(() => '');
+  await next();
+  if (!actorId) return;
+  const entry = {
+    id: randomUUID(), actorId, actorUsername,
+    action: c.req.method.toLowerCase() + ' ' + c.req.path,
+    timestamp: Date.now(),
+    details: { path: c.req.path, method: c.req.method, request: requestBody.slice(0, 4000) },
+    result: c.res.status < 400 ? 'success' : 'failure',
+  };
+  try {
+    await redis.zAdd(MOD_LOG_KEY, { member: JSON.stringify(entry), score: entry.timestamp });
+  } catch (error) {
+    console.error('Moderator audit log write failed:', error);
+  }
+});
 const COURSE_CODE_PATTERN = /^[A-Z]{3}[0-9]{4}$/;
 
 const VALID_SCHOOLS = [
@@ -99,7 +153,7 @@ api.get('/faculty', async (c) => {
       );
     }
 
-    const storedRecords = await redis.hGetAll(FACULTY_HASH_KEY);
+    await ensureFacultyIds();\n    const storedRecords = await redis.hGetAll(FACULTY_HASH_KEY);
 
     const currentUserId = context.userId;
 
@@ -663,7 +717,7 @@ api.post('/mod/faculty', async (c) => {
     const courses = await redis.hGetAll(COURSES_HASH_KEY);
     for (const code of courseCodes) if (!Object.prototype.hasOwnProperty.call(courses, code)) return c.json<ApiErrorResponse>({ status: 'error', message: code + ' is not an approved course.' }, 400);
     const id = randomUUID();
-    const record: FacultyRecord = { id, firstName, middleName, lastName, school, courseCodes, createdAt: Date.now() };
+    const record: FacultyRecord = { id, facultyId: await nextFacultyId(), firstName, middleName, lastName, school, courseCodes, createdAt: Date.now() };
     const allFaculty = await redis.hGetAll(FACULTY_HASH_KEY);
     const duplicate = Object.values(allFaculty).some((value) => {
       try { const existing = JSON.parse(value) as FacultyRecord; return existing.school === school && normalizeName(getFullName(existing)) === normalizeName(getFullName(record)); } catch { return false; }
