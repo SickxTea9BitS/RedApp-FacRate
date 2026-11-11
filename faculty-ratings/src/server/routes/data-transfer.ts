@@ -265,7 +265,7 @@ const readImportArchive = async (form: FormData) => {
   const metadata = JSON.parse(files['metadata.json'] ?? 'null') as { schemaVersion?: number } | null;
   if (!metadata || metadata.schemaVersion !== 1) throw new Error('The export metadata is missing or unsupported.');
   const requireHeaders = (name: string, expected: string[]) => {
-    const header = (files[name] ?? '').split(/\\r?\\n/, 1)[0].split(',').map(value => value.trim());
+    const header = (files[name] ?? '').split(/\\r?\\n/, 1)[0]!.split(',').map(value => value.trim());
     if (header.length !== expected.length || expected.some((value, index) => header[index] !== value)) {
       throw new Error(name + ' has missing, unexpected, or incorrectly ordered columns.');
     }
@@ -292,7 +292,7 @@ const readImportArchive = async (form: FormData) => {
   if (rows.faculties.some(row => !validFacultyRow(row))) throw new Error('One or more faculty rows contain invalid names or school values.');
   if (rows.courses.some(row => !/^[A-Z]{3}[0-9]{4}$/.test((row.course_code ?? '').trim().toUpperCase()))) throw new Error('One or more course codes are invalid. Expected format: XXX0000.');
   const sourceFacultyIds = new Set(rows.faculties.map(row => row.faculty_id).filter(Boolean));
-  if (rows.faculties.some(row => !row.faculty_id || !/^VITBFAC[0-9]{4,}$/.test(row.faculty_id))) throw new Error('Every faculty row must have a valid permanent faculty ID.');
+  if (rows.faculties.some(row => !row.faculty_id || !/^VITBFAC[0-9]{4,15}$/.test(row.faculty_id))) throw new Error('Every faculty row must have a valid permanent faculty ID.');
   const sourceCourseCodes = new Set(rows.courses.map(row => row.course_code.trim().toUpperCase()));
   if (mode !== 'faculty-courses' && rows.assignments.some(row => !sourceCourseCodes.has(row.course_code.trim().toUpperCase()))) {
     throw new Error('Every faculty course assignment must reference a course included in courses.csv.');
@@ -668,7 +668,7 @@ dataTransfer.post('/backups/:id/restore', async (c) => {
   if (!actor) return c.json({ status: 'error', message: 'Approved admin access is required.' }, 403);
   const backupId = c.req.param('id');
   if (!/^[0-9a-f-]{36}$/i.test(backupId)) return c.json({ status: 'error', message: 'Invalid backup ID.' }, 400);
-  const restoreConfirmation = await c.req.json<{ confirmation?: unknown; finalConfirmation?: unknown }>().catch(() => ({}));
+  const restoreConfirmation = await c.req.json<{ confirmation?: unknown; finalConfirmation?: unknown }>().catch(() => ({} as { confirmation?: unknown; finalConfirmation?: unknown }));
   if (restoreConfirmation.confirmation !== 'RESTORE' || restoreConfirmation.finalConfirmation !== true) {
     return c.json({ status: 'error', message: 'Type RESTORE and accept the final confirmation before restoring a backup.' }, 400);
   }
