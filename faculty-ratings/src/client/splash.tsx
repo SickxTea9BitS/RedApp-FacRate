@@ -162,7 +162,7 @@ export const App = () => {
 
   const [isModerator, setIsModerator] = useState(false);
   const [adminRole, setAdminRole] = useState<'owner' | 'admin' | 'none'>('none');
-  const [adminSectionView, setAdminSectionView] = useState<'overview' | 'admins' | 'moderator-logs' | 'admin-logs' | 'security-logs'>('overview');
+  const [adminSectionView, setAdminSectionView] = useState<'overview' | 'admins' | 'moderator-logs' | 'admin-logs' | 'security-logs' | 'data-export'>('overview');
   const [adminUsers, setAdminUsers] = useState<Array<{ id: string; username: string; addedAt: number }>>([]);
   const [pendingAdminRemoval, setPendingAdminRemoval] = useState<{ id: string; username: string } | null>(null);
   const [adminLogs, setAdminLogs] = useState<Array<{ id: string; actorUsername: string; action: string; timestamp: number; details: Record<string, unknown>; result: string }>>([]);
@@ -174,6 +174,12 @@ export const App = () => {
   const [adminError, setAdminError] = useState('');
   const [adminBusy, setAdminBusy] = useState(false);
   const [adminConfirmText, setAdminConfirmText] = useState('');
+  const [dataExportType, setDataExportType] = useState<'faculty' | 'courses' | 'ratings' | 'all'>('faculty');
+  const [includeFacultyAssignments, setIncludeFacultyAssignments] = useState(true);
+  const [facultyCourseDataOnly, setFacultyCourseDataOnly] = useState(false);
+  const [dataTransferBusy, setDataTransferBusy] = useState(false);
+  const [dataTransferMessage, setDataTransferMessage] = useState('');
+  const [dataTransferError, setDataTransferError] = useState('');
   const [adminStatus, setAdminStatus] = useState<{ moderatorLogCount: number; adminLogCount: number; showLogWarning: boolean }>({ moderatorLogCount: 0, adminLogCount: 0, showLogWarning: false });
   const [moderatorCheckLoading, setModeratorCheckLoading] = useState(true);
   const [moderatorRequests, setModeratorRequests] = useState<FacultyRequest[]>(
@@ -972,6 +978,28 @@ export const App = () => {
       const url = URL.createObjectURL(blob);
       const link = document.createElement('a'); link.href = url; link.download = 'faculty-ratings-logs.json'; link.click(); URL.revokeObjectURL(url);
     } catch (error) { setAdminError(error instanceof Error ? error.message : 'Unable to export logs.'); }
+  };
+
+  const exportDataArchive = async () => {
+    setDataTransferBusy(true); setDataTransferError(''); setDataTransferMessage('');
+    try {
+      const type = facultyCourseDataOnly ? 'faculty-courses' : dataExportType;
+      const query = new URLSearchParams({ type, includeAssignments: String(includeFacultyAssignments) });
+      const response = await fetch('/api/admin/data/export?' + query.toString());
+      if (!response.ok) {
+        const result = await response.json().catch(() => ({ message: 'Unable to export data.' }));
+        throw new Error(result.message || 'Unable to export data.');
+      }
+      const blob = await response.blob();
+      const disposition = response.headers.get('Content-Disposition') ?? '';
+      const filename = disposition.match(/filename="?([^";]+)"?/i)?.[1] ?? 'FacultyRatings_Export.zip';
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a'); link.href = url; link.download = filename; link.click();
+      window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+      setDataTransferMessage('Your ZIP export is ready.');
+    } catch (error) {
+      setDataTransferError(error instanceof Error ? error.message : 'Unable to export data.');
+    } finally { setDataTransferBusy(false); }
   };
 
   const openAdminDashboard = () => {
@@ -2782,6 +2810,7 @@ export const App = () => {
             <button style={styles.secondaryButton} onClick={() => { setAdminSectionView('moderator-logs'); void loadAdminLogs('moderator'); }}>Moderator Logs</button>
             <button style={styles.secondaryButton} onClick={() => { setAdminSectionView('admin-logs'); void loadAdminLogs('admin'); }}>Admin Logs</button>
             {adminRole === 'owner' && <button style={styles.secondaryButton} onClick={() => { setAdminSectionView('security-logs'); void loadAdminLogs('security'); }}>Security Audit</button>}
+            <button style={styles.secondaryButton} onClick={() => { setAdminSectionView('data-export'); setDataTransferError(''); setDataTransferMessage(''); }}>Data Export</button>
           </div>
           {adminSectionView === 'overview' && (
             <div style={{ ...styles.card, display: 'grid', gap: '12px' }}>
@@ -2790,6 +2819,29 @@ export const App = () => {
               <p style={{ margin: 0 }}>Admin logs: {adminStatus.adminLogCount.toLocaleString()}</p>
               <p style={styles.muted}>Logs are retained until the owner clears them. The security audit log is retained separately and is never removed by normal log clearing.</p>
               {adminRole === 'owner' && <button style={styles.secondaryButton} onClick={() => void exportAdminLogs()}>Export Logs (JSON)</button>}
+            </div>
+          )}
+          {adminSectionView === 'data-export' && (
+            <div style={{ ...styles.card, display: 'grid', gap: '14px' }}>
+              <h2 style={{ margin: 0 }}>Export App Data</h2>
+              <p style={styles.muted}>Download selected records as a ZIP containing CSV files and JSON metadata. Reddit voter IDs are never included; individual ratings remain anonymous.</p>
+              <label style={styles.label}>Dataset</label>
+              <select style={styles.input} value={dataExportType} onChange={event => { setDataExportType(event.target.value as typeof dataExportType); setFacultyCourseDataOnly(false); }}>
+                <option value="faculty">Faculty Data</option>
+                <option value="courses">Course List</option>
+                <option value="ratings">Faculty Ratings</option>
+                <option value="all">All Data</option>
+              </select>
+              {dataExportType === 'faculty' && (
+                <>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '9px' }}><input type="checkbox" checked={includeFacultyAssignments && !facultyCourseDataOnly} disabled={facultyCourseDataOnly} onChange={event => setIncludeFacultyAssignments(event.target.checked)} /> Include Faculty Course Assignments</label>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '9px' }}><input type="checkbox" checked={facultyCourseDataOnly} onChange={event => setFacultyCourseDataOnly(event.target.checked)} /> Faculty Course Data Only (faculty details and assigned course codes)</label>
+                </>
+              )}
+              {dataTransferError && <p role="alert" style={{ color: '#ffb3b3', margin: 0 }}>{dataTransferError}</p>}
+              {dataTransferMessage && <p role="status" style={{ color: '#8de0ad', margin: 0 }}>{dataTransferMessage}</p>}
+              <p style={styles.muted}>ZIP files are limited to 4.5 MB to stay below the app request-size constraints. If an export is too large, export smaller datasets separately.</p>
+              <button type="button" style={styles.button} onClick={() => void exportDataArchive()} disabled={dataTransferBusy}>{dataTransferBusy ? 'Preparing ZIP...' : 'Download ZIP Export'}</button>
             </div>
           )}
           {adminSectionView === 'admins' && adminRole === 'owner' && (
