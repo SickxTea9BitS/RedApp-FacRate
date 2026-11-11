@@ -188,6 +188,10 @@ export const App = () => {
   const [addMissingRatingFaculty, setAddMissingRatingFaculty] = useState(false);
   const [importConfirmation, setImportConfirmation] = useState('');
   const [finalImportConfirmation, setFinalImportConfirmation] = useState(false);
+  const [dataBackups, setDataBackups] = useState<Array<{ backupId: string; createdAt: number; actorId: string; facultyCount: number; courseCount: number }>>([]);
+  const [restoreBackupId, setRestoreBackupId] = useState('');
+  const [restoreConfirmation, setRestoreConfirmation] = useState('');
+  const [finalRestoreConfirmation, setFinalRestoreConfirmation] = useState(false);
   const [adminStatus, setAdminStatus] = useState<{ moderatorLogCount: number; adminLogCount: number; showLogWarning: boolean }>({ moderatorLogCount: 0, adminLogCount: 0, showLogWarning: false });
   const [moderatorCheckLoading, setModeratorCheckLoading] = useState(true);
   const [moderatorRequests, setModeratorRequests] = useState<FacultyRequest[]>(
@@ -988,6 +992,28 @@ export const App = () => {
     } catch (error) { setAdminError(error instanceof Error ? error.message : 'Unable to export logs.'); }
   };
 
+  const loadDataBackups = async () => {
+    setDataTransferBusy(true); setDataTransferError('');
+    try {
+      const response = await fetch('/api/admin/data/backups'); const result = await response.json();
+      if (!response.ok || result.status !== 'success') throw new Error(result.message || 'Unable to load recovery backups.');
+      setDataBackups(result.backups ?? []);
+    } catch (error) { setDataTransferError(error instanceof Error ? error.message : 'Unable to load recovery backups.'); }
+    finally { setDataTransferBusy(false); }
+  };
+
+  const restoreDataBackup = async () => {
+    if (!restoreBackupId || restoreConfirmation !== 'RESTORE' || !finalRestoreConfirmation) return;
+    setDataTransferBusy(true); setDataTransferError(''); setDataTransferMessage('');
+    try {
+      const response = await fetch('/api/admin/data/backups/' + encodeURIComponent(restoreBackupId) + '/restore', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ confirmation: restoreConfirmation, finalConfirmation: finalRestoreConfirmation }) });
+      const result = await response.json();
+      if (!response.ok || result.status !== 'success') throw new Error(result.message || 'Unable to restore backup.');
+      setDataTransferMessage(result.message); setRestoreBackupId(''); setRestoreConfirmation(''); setFinalRestoreConfirmation(false); await loadDataBackups();
+    } catch (error) { setDataTransferError(error instanceof Error ? error.message : 'Unable to restore backup.'); }
+    finally { setDataTransferBusy(false); }
+  };
+
   const previewDataImport = async () => {
     if (!dataImportFile) { setDataTransferError('Choose a ZIP file first.'); return; }
     setDataTransferBusy(true); setDataTransferError(''); setDataTransferMessage(''); setDataImportPreview(null);
@@ -1014,7 +1040,7 @@ export const App = () => {
       const response = await fetch('/api/admin/data/import/apply', { method: 'POST', body: form });
       const result = await response.json();
       if (!response.ok || result.status !== 'success') throw new Error(result.message || 'Import failed.');
-      setDataTransferMessage(result.message || 'Import completed.'); setDataImportPreview(null); setDataImportFile(null); setImportConfirmation(''); setFinalImportConfirmation(false);
+      setDataTransferMessage(result.message || 'Import completed.'); setDataImportPreview(null); setDataImportFile(null); setImportConfirmation(''); setFinalImportConfirmation(false); if (dataImportMode === 'all') await loadDataBackups();
       const fileInput = document.getElementById('data-import-file') as HTMLInputElement | null; if (fileInput) fileInput.value = '';
     } catch (error) { setDataTransferError(error instanceof Error ? error.message : 'Import failed.'); }
     finally { setDataTransferBusy(false); }
@@ -2851,7 +2877,7 @@ export const App = () => {
             <button style={styles.secondaryButton} onClick={() => { setAdminSectionView('admin-logs'); void loadAdminLogs('admin'); }}>Admin Logs</button>
             {adminRole === 'owner' && <button style={styles.secondaryButton} onClick={() => { setAdminSectionView('security-logs'); void loadAdminLogs('security'); }}>Security Audit</button>}
             <button style={styles.secondaryButton} onClick={() => { setAdminSectionView('data-export'); setDataTransferError(''); setDataTransferMessage(''); }}>Data Export</button>
-            <button style={styles.secondaryButton} onClick={() => { setAdminSectionView('data-import'); setDataTransferError(''); setDataTransferMessage(''); }}>Data Import</button>
+            <button style={styles.secondaryButton} onClick={() => { setAdminSectionView('data-import'); setDataTransferError(''); setDataTransferMessage(''); void loadDataBackups(); }}>Data Import</button>
           </div>
           {adminSectionView === 'overview' && (
             <div style={{ ...styles.card, display: 'grid', gap: '12px' }}>
@@ -2879,6 +2905,32 @@ export const App = () => {
                   <label style={{ display: 'flex', alignItems: 'center', gap: '9px' }}><input type="checkbox" checked={facultyCourseDataOnly} onChange={event => setFacultyCourseDataOnly(event.target.checked)} /> Faculty Course Data Only (faculty details and assigned course codes)</label>
                 </>
               )}
+              <div style={{ borderTop: '1px solid #56618d', paddingTop: '14px', display: 'grid', gap: '10px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+                  <h3 style={{ margin: 0 }}>Recovery Backups</h3>
+                  <button type="button" style={styles.secondaryButton} onClick={() => void loadDataBackups()} disabled={dataTransferBusy}>Refresh Backups</button>
+                </div>
+                <p style={styles.muted}>Full replacements automatically create retained backups. Restoring one first creates a backup of the current data.</p>
+                {dataBackups.map(backup => <article key={backup.backupId} style={{ ...styles.card, display: 'grid', gap: '7px' }}>
+                  <strong>{new Date(backup.createdAt).toLocaleString()}</strong>
+                  <span style={styles.muted}>{backup.facultyCount} faculty · {backup.courseCount} courses · Backup {backup.backupId}</span>
+                  <button type="button" style={{ ...styles.secondaryButton, borderColor: '#d89a37', color: '#ffd58a' }} onClick={() => { setRestoreBackupId(backup.backupId); setRestoreConfirmation(''); setFinalRestoreConfirmation(false); }}>Prepare Restore</button>
+                </article>)}
+                {!dataBackups.length && <p style={styles.muted}>No recovery backups are currently available.</p>}
+                {restoreBackupId && (
+                  <div style={{ border: '1px solid #b83232', borderRadius: '10px', padding: '12px', display: 'grid', gap: '9px' }}>
+                    <strong style={{ color: '#ffaaaa' }}>Restore selected backup?</strong>
+                    <p style={styles.muted}>This replaces the current faculty, course and rating datasets with the selected backup. Admins, owner identity, security settings and logs are preserved.</p>
+                    <label style={styles.label}>Type RESTORE</label>
+                    <input style={styles.input} value={restoreConfirmation} onChange={event => setRestoreConfirmation(event.target.value)} placeholder="RESTORE" />
+                    <label style={{ display: 'flex', alignItems: 'center', gap: '8px' }}><input type="checkbox" checked={finalRestoreConfirmation} onChange={event => setFinalRestoreConfirmation(event.target.checked)} /> I understand this replaces the current data.</label>
+                    <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                      <button type="button" style={styles.secondaryButton} onClick={() => setRestoreBackupId('')}>Cancel</button>
+                      <button type="button" style={{ ...styles.button, backgroundColor: '#a63838' }} disabled={dataTransferBusy || restoreConfirmation !== 'RESTORE' || !finalRestoreConfirmation} onClick={() => void restoreDataBackup()}>{dataTransferBusy ? 'Restoring...' : 'Restore Backup'}</button>
+                    </div>
+                  </div>
+                )}
+              </div>
               {dataTransferError && <p role="alert" style={{ color: '#ffb3b3', margin: 0 }}>{dataTransferError}</p>}
               {dataTransferMessage && <p role="status" style={{ color: '#8de0ad', margin: 0 }}>{dataTransferMessage}</p>}
               <p style={styles.muted}>ZIP files are limited to 4.5 MB to stay below the app request-size constraints. If an export is too large, export smaller datasets separately.</p>
