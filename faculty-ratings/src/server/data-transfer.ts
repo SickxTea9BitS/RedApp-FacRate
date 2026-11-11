@@ -141,9 +141,8 @@ export const readZip = (input: Uint8Array) => {
   return files;
 };
 
-export const toCsv = (rows: Array<Record<string, string | number>>) => {
-  if (!rows.length) return '';
-  const columns = Object.keys(rows[0]);
+export const toCsv = (rows: Array<Record<string, string | number>>, columns = Object.keys(rows[0] ?? {})) => {
+  if (!columns.length) return '';
   const cell = (value: string | number) => {
     const text = String(value ?? '');
     return /[",\r\n]/.test(text) ? '"' + text.replace(/"/g, '""') + '"' : text;
