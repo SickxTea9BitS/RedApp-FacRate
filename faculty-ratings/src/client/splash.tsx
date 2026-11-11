@@ -2905,6 +2905,27 @@ export const App = () => {
                   <label style={{ display: 'flex', alignItems: 'center', gap: '9px' }}><input type="checkbox" checked={facultyCourseDataOnly} onChange={event => setFacultyCourseDataOnly(event.target.checked)} /> Faculty Course Data Only (faculty details and assigned course codes)</label>
                 </>
               )}
+              {dataTransferError && <p role="alert" style={{ color: '#ffb3b3', margin: 0 }}>{dataTransferError}</p>}
+              {dataTransferMessage && <p role="status" style={{ color: '#8de0ad', margin: 0 }}>{dataTransferMessage}</p>}
+              <p style={styles.muted}>ZIP files are limited to 4.5 MB to stay below the app request-size constraints. If an export is too large, export smaller datasets separately.</p>
+              <button type="button" style={styles.button} onClick={() => void exportDataArchive()} disabled={dataTransferBusy}>{dataTransferBusy ? 'Preparing ZIP...' : 'Download ZIP Export'}</button>
+            </div>
+          )}
+          {adminSectionView === 'data-import' && (
+            <div style={{ ...styles.card, display: 'grid', gap: '14px' }}>
+              <h2 style={{ margin: 0 }}>Import App Data</h2>
+              <p style={styles.muted}>Only ZIP archives exported by Faculty Ratings schema version 1 are accepted. Uploads are limited to 4.5 MB; the archive is validated before any records are changed.</p>
+              <label style={styles.label}>Import Mode</label>
+              <select style={styles.input} value={dataImportMode} onChange={event => { setDataImportMode(event.target.value as typeof dataImportMode); setDataImportPreview(null); }}>
+                <option value="faculty">Faculty Data</option>
+                <option value="faculty-courses">Faculty Course Details Only</option>
+                <option value="courses">Course List</option>
+                <option value="ratings">Faculty Ratings (Anonymous)</option>
+                <option value="all">All Data (Full Replacement)</option>
+              </select>
+              <label style={styles.label}>ZIP Archive</label>
+              <input id="data-import-file" style={styles.input} type="file" accept=".zip,application/zip" onChange={event => { setDataImportFile(event.target.files?.[0] ?? null); setDataImportPreview(null); }} />
+              <button type="button" style={styles.secondaryButton} onClick={() => void previewDataImport()} disabled={dataTransferBusy || !dataImportFile}>{dataTransferBusy ? 'Validating...' : 'Validate & Preview'}</button>
               <div style={{ borderTop: '1px solid #56618d', paddingTop: '14px', display: 'grid', gap: '10px' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
                   <h3 style={{ margin: 0 }}>Recovery Backups</h3>
@@ -2931,27 +2952,6 @@ export const App = () => {
                   </div>
                 )}
               </div>
-              {dataTransferError && <p role="alert" style={{ color: '#ffb3b3', margin: 0 }}>{dataTransferError}</p>}
-              {dataTransferMessage && <p role="status" style={{ color: '#8de0ad', margin: 0 }}>{dataTransferMessage}</p>}
-              <p style={styles.muted}>ZIP files are limited to 4.5 MB to stay below the app request-size constraints. If an export is too large, export smaller datasets separately.</p>
-              <button type="button" style={styles.button} onClick={() => void exportDataArchive()} disabled={dataTransferBusy}>{dataTransferBusy ? 'Preparing ZIP...' : 'Download ZIP Export'}</button>
-            </div>
-          )}
-          {adminSectionView === 'data-import' && (
-            <div style={{ ...styles.card, display: 'grid', gap: '14px' }}>
-              <h2 style={{ margin: 0 }}>Import App Data</h2>
-              <p style={styles.muted}>Only ZIP archives exported by Faculty Ratings schema version 1 are accepted. Uploads are limited to 4.5 MB; the archive is validated before any records are changed.</p>
-              <label style={styles.label}>Import Mode</label>
-              <select style={styles.input} value={dataImportMode} onChange={event => { setDataImportMode(event.target.value as typeof dataImportMode); setDataImportPreview(null); }}>
-                <option value="faculty">Faculty Data</option>
-                <option value="faculty-courses">Faculty Course Details Only</option>
-                <option value="courses">Course List</option>
-                <option value="ratings">Faculty Ratings (Anonymous)</option>
-                <option value="all">All Data (Full Replacement)</option>
-              </select>
-              <label style={styles.label}>ZIP Archive</label>
-              <input id="data-import-file" style={styles.input} type="file" accept=".zip,application/zip" onChange={event => { setDataImportFile(event.target.files?.[0] ?? null); setDataImportPreview(null); }} />
-              <button type="button" style={styles.secondaryButton} onClick={() => void previewDataImport()} disabled={dataTransferBusy || !dataImportFile}>{dataTransferBusy ? 'Validating...' : 'Validate & Preview'}</button>
               {dataImportPreview && (
                 <div style={{ borderTop: '1px solid #56618d', paddingTop: '14px', display: 'grid', gap: '10px' }}>
                   <h3 style={{ margin: 0 }}>Import Preview</h3>
