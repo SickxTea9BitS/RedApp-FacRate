@@ -2870,14 +2870,14 @@ export const App = () => {
               <p>At least one log has reached 5,000 entries. Export the logs and clear the normal logs when appropriate. The protected security audit log is not cleared.</p>
             </div>
           )}
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
-            <button style={styles.secondaryButton} onClick={() => { setAdminSectionView('overview'); void refreshAdminStatus(); }}>Overview</button>
-            {adminRole === 'owner' && <button style={styles.secondaryButton} onClick={() => { setAdminSectionView('admins'); void loadAdminUsers(); }}>Manage Admins</button>}
-            <button style={styles.secondaryButton} onClick={() => { setAdminSectionView('moderator-logs'); void loadAdminLogs('moderator'); }}>Moderator Logs</button>
-            <button style={styles.secondaryButton} onClick={() => { setAdminSectionView('admin-logs'); void loadAdminLogs('admin'); }}>Admin Logs</button>
-            {adminRole === 'owner' && <button style={styles.secondaryButton} onClick={() => { setAdminSectionView('security-logs'); void loadAdminLogs('security'); }}>Security Audit</button>}
-            <button style={styles.secondaryButton} onClick={() => { setAdminSectionView('data-export'); setDataTransferError(''); setDataTransferMessage(''); }}>Data Export</button>
-            <button style={styles.secondaryButton} onClick={() => { setAdminSectionView('data-import'); setDataTransferError(''); setDataTransferMessage(''); void loadDataBackups(); }}>Data Import</button>
+          <div className="admin-menu-grid">
+            <button className="admin-menu-card" style={styles.secondaryButton} onClick={() => { setAdminSectionView('overview'); void refreshAdminStatus(); }}>Overview</button>
+            {adminRole === 'owner' && <button className="admin-menu-card" style={styles.secondaryButton} onClick={() => { setAdminSectionView('admins'); void loadAdminUsers(); }}>Manage Admins</button>}
+            <button className="admin-menu-card" style={styles.secondaryButton} onClick={() => { setAdminSectionView('moderator-logs'); void loadAdminLogs('moderator'); }}>Moderator Logs</button>
+            <button className="admin-menu-card" style={styles.secondaryButton} onClick={() => { setAdminSectionView('admin-logs'); void loadAdminLogs('admin'); }}>Admin Logs</button>
+            {adminRole === 'owner' && <button className="admin-menu-card" style={styles.secondaryButton} onClick={() => { setAdminSectionView('security-logs'); void loadAdminLogs('security'); }}>Security Audit</button>}
+            <button className="admin-menu-card" style={styles.secondaryButton} onClick={() => { setAdminSectionView('data-export'); setDataTransferError(''); setDataTransferMessage(''); }}>Data Export</button>
+            <button className="admin-menu-card" style={styles.secondaryButton} onClick={() => { setAdminSectionView('data-import'); setDataTransferError(''); setDataTransferMessage(''); void loadDataBackups(); }}>Data Import</button>
           </div>
           {adminSectionView === 'overview' && (
             <div style={{ ...styles.card, display: 'grid', gap: '12px' }}>
