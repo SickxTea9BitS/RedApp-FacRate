@@ -164,6 +164,7 @@ export const App = () => {
   const [adminRole, setAdminRole] = useState<'owner' | 'admin' | 'none'>('none');
   const [adminSectionView, setAdminSectionView] = useState<'overview' | 'admins' | 'moderator-logs' | 'admin-logs' | 'security-logs'>('overview');
   const [adminUsers, setAdminUsers] = useState<Array<{ id: string; username: string; addedAt: number }>>([]);
+  const [pendingAdminRemoval, setPendingAdminRemoval] = useState<{ id: string; username: string } | null>(null);
   const [adminLogs, setAdminLogs] = useState<Array<{ id: string; actorUsername: string; action: string; timestamp: number; details: Record<string, unknown>; result: string }>>([]);
   const [adminLogPage, setAdminLogPage] = useState(1);
   const [adminLogTotal, setAdminLogTotal] = useState(0);
@@ -939,13 +940,13 @@ export const App = () => {
   };
 
   const removeAdminUser = async (redditUserId: string) => {
-    if (!window.confirm('Remove this approved admin?')) return;
     setAdminBusy(true); setAdminError(''); setAdminMessage('');
     try {
       const response = await fetch('/api/admin/admins/remove', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ redditUserId }) });
       const result = await response.json();
       if (!response.ok || result.status !== 'success') throw new Error(result.message || 'Unable to remove admin.');
-      setAdminMessage(result.message); await loadAdminUsers();
+      setPendingAdminRemoval(null);
+      setAdminMessage(result.message); await loadAdminUsers(); await refreshAdminStatus();
     } catch (error) { setAdminError(error instanceof Error ? error.message : 'Unable to remove admin.'); }
     finally { setAdminBusy(false); }
   };
@@ -1228,24 +1229,24 @@ export const App = () => {
 
             </div>
 
-            {adminRole !== 'none' && (
+            {!moderatorCheckLoading && isModerator && (
               <div style={{ marginTop: '18px' }}>
-                <button style={{ ...styles.button, backgroundColor: '#5265a5' }} onClick={openAdminConsole}>
-                  🛡 Admin Dashboard
+                <button
+                  style={{ ...styles.button, backgroundColor: '#5265a5' }}
+                  onClick={openAdminDashboard}
+                >
+                  ⚙ Moderator Dashboard
                 </button>
               </div>
             )}
 
-            {!moderatorCheckLoading && isModerator && (
+            {adminRole !== 'none' && (
               <div style={{ marginTop: '42px' }}>
                 <button
-                  style={{
-                    ...styles.button,
-                    backgroundColor: '#d04422',
-                  }}
-                  onClick={openAdminDashboard}
+                  style={{ ...styles.button, backgroundColor: '#d04422' }}
+                  onClick={openAdminConsole}
                 >
-                  ⚙ Moderator Dashboard
+                  🛡 Admin Dashboard
                 </button>
               </div>
             )}
@@ -2800,7 +2801,7 @@ export const App = () => {
                 <button style={styles.button} type="submit" disabled={adminBusy}>Add Admin</button>
               </form>
               <div style={{ display: 'grid', gap: '8px' }}>
-                {adminUsers.map(user => <article key={user.id} style={{ ...styles.card, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '10px' }}><div><strong>u/{user.username}</strong><p style={styles.muted}>{user.id}</p></div><button style={styles.secondaryButton} disabled={adminBusy} onClick={() => void removeAdminUser(user.id)}>Remove</button></article>)}
+                {adminUsers.map(user => <article key={user.id} style={{ ...styles.card, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '10px' }}><div><strong>u/{user.username}</strong><p style={styles.muted}>{user.id}</p></div><button style={{ ...styles.secondaryButton, borderColor: '#d04444', color: '#ff9999' }} disabled={adminBusy} onClick={() => setPendingAdminRemoval({ id: user.id, username: user.username })}>Remove</button></article>)}
                 {!adminBusy && adminUsers.length === 0 && <p style={styles.muted}>No additional admins have been approved.</p>}
               </div>
             </div>
@@ -2829,6 +2830,31 @@ export const App = () => {
             </div>
           )}
         </section>
+      )}
+
+      {pendingAdminRemoval && (
+        <div
+          role="presentation"
+          onClick={() => setPendingAdminRemoval(null)}
+          style={{ position: 'fixed', inset: 0, zIndex: 1100, display: 'grid', placeItems: 'center', padding: '20px', background: 'rgba(0, 0, 0, 0.72)' }}
+        >
+          <section
+            role="alertdialog"
+            aria-modal="true"
+            aria-labelledby="admin-remove-confirmation-title"
+            onClick={(event) => event.stopPropagation()}
+            style={{ width: 'min(100%, 440px)', display: 'grid', gap: '16px', padding: '22px', border: '1px solid #6575a8', borderRadius: '16px', background: '#202747', color: '#fff', boxShadow: '0 20px 60px rgba(0,0,0,.45)' }}
+          >
+            <h2 id="admin-remove-confirmation-title" style={{ margin: 0 }}>Remove approved admin?</h2>
+            <p style={{ margin: 0, lineHeight: 1.55 }}>u/{pendingAdminRemoval.username} will immediately lose Admin Dashboard access. This does not affect their subreddit moderator permissions.</p>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', flexWrap: 'wrap' }}>
+              <button type="button" style={styles.secondaryButton} onClick={() => setPendingAdminRemoval(null)} disabled={adminBusy}>Cancel</button>
+              <button type="button" style={{ ...styles.button, backgroundColor: '#b83232' }} onClick={() => void removeAdminUser(pendingAdminRemoval.id)} disabled={adminBusy}>
+                {adminBusy ? 'Removing...' : 'Remove Admin'}
+              </button>
+            </div>
+          </section>
+        </div>
       )}
 
       {pendingDelete && (

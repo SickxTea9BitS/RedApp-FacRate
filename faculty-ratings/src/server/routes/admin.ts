@@ -166,9 +166,13 @@ admin.post('/admins/remove', async (c) => {
     if (!id || id === OWNER_REDDIT_ID) return c.json({ status: 'error', message: 'The owner cannot be removed.' }, 400);
     const existing = await redis.hGet(ADMIN_USERS_KEY, id);
     if (!existing) return c.json({ status: 'error', message: 'Admin not found.' }, 404);
-    await redis.hDel(ADMIN_USERS_KEY, [id]);
-    await writeLog(ADMIN_LOG_KEY, actor, 'admin.remove', { targetUserId: id });
-    await writeLog(SECURITY_LOG_KEY, actor, 'admin.remove', { targetUserId: id });
+    let existingRecord: { username?: string; addedAt?: number; addedBy?: string } = {};
+    try { existingRecord = JSON.parse(existing) as typeof existingRecord; } catch { /* Keep a safe fallback for legacy records. */ }
+    await redis.hSet(ADMIN_USERS_KEY, {
+      [id]: JSON.stringify({ ...existingRecord, active: false, removedAt: Date.now(), removedBy: actor.id }),
+    });
+    await writeLog(ADMIN_LOG_KEY, actor, 'admin.remove', { targetUserId: id, targetUsername: existingRecord.username ?? 'unknown' });
+    await writeLog(SECURITY_LOG_KEY, actor, 'admin.remove', { targetUserId: id, targetUsername: existingRecord.username ?? 'unknown' });
     return c.json({ status: 'success' as const, message: 'Admin removed.' });
   } catch {
     await writeLog(ADMIN_LOG_KEY, actor, 'admin.remove', {}, 'failure');
