@@ -323,12 +323,12 @@ dataTransfer.post('/import/preview', async (c) => {
       const key = identityKey({ first_name: item.record.firstName, middle_name: item.record.middleName, last_name: item.record.lastName, school: item.record.school });
       identities.set(key, [...(identities.get(key) ?? []), item]);
     }
-    const matches = rows.faculties.map(source => {
+    const matches = mode === 'all' ? rows.faculties.map(source => ({ sourceId: source.faculty_id, match: 'new', candidates: [] as Array<{ facultyId: string; name: string; school: string }> })) : rows.faculties.map(source => {
       const byId = facultyById.get(source.faculty_id);
       const byIdentity = identities.get(identityKey(source)) ?? [];
       return { sourceId: source.faculty_id, match: byId ? 'faculty-id' : byIdentity.length === 1 ? 'identity' : byIdentity.length > 1 ? 'ambiguous' : 'new', candidates: byIdentity.map(item => ({ facultyId: item.record.facultyId ?? '', name: [item.record.firstName, item.record.middleName, item.record.lastName].filter(Boolean).join(' '), school: item.record.school })) };
     });
-    const missingCourses = Array.from(new Set([
+    const missingCourses = mode === 'all' ? [] : Array.from(new Set([
       ...rows.courses.map(row => row.course_code.trim().toUpperCase()),
       ...rows.assignments.map(row => row.course_code.trim().toUpperCase()),
     ])).filter(code => !existingCourses.has(code)).sort();
