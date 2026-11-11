@@ -537,10 +537,9 @@ dataTransfer.post('/import/apply', async (c) => {
         await writeImportLog(actor, 'data.backup.created', { backupId, type: 'full-replacement' });
         return c.json({ status: 'success', message: 'Full replacement completed. A recovery backup was retained.', backupId });
       } catch (error) {
-        await redis.del(FACULTY_KEY, COURSES_KEY);
         const partialFaculty = await redis.hGetAll(FACULTY_KEY);
         const partialRatingKeys = Object.keys(partialFaculty).map(id => RATINGS_PREFIX + id);
-        if (partialRatingKeys.length) await redis.del(...partialRatingKeys);
+        await redis.del(FACULTY_KEY, COURSES_KEY, ...partialRatingKeys);
         await setHashInBatches(FACULTY_KEY, currentFaculty);
         await setHashInBatches(COURSES_KEY, currentCourses);
         for (const [id, ratings] of Object.entries(currentRatings)) await setHashInBatches(RATINGS_PREFIX + id, ratings);
@@ -621,6 +620,10 @@ dataTransfer.post('/backups/:id/restore', async (c) => {
   if (!actor) return c.json({ status: 'error', message: 'Approved admin access is required.' }, 403);
   const backupId = c.req.param('id');
   if (!/^[0-9a-f-]{36}$/i.test(backupId)) return c.json({ status: 'error', message: 'Invalid backup ID.' }, 400);
+  const restoreConfirmation = await c.req.json<{ confirmation?: unknown; finalConfirmation?: unknown }>().catch(() => ({}));
+  if (restoreConfirmation.confirmation !== 'RESTORE' || restoreConfirmation.finalConfirmation !== true) {
+    return c.json({ status: 'error', message: 'Type RESTORE and accept the final confirmation before restoring a backup.' }, 400);
+  }
   try {
     const storedBackup = await redis.hGet('import:backup:' + backupId, 'snapshot');
     if (!storedBackup) return c.json({ status: 'error', message: 'Backup not found.' }, 404);
@@ -652,10 +655,9 @@ dataTransfer.post('/backups/:id/restore', async (c) => {
       await writeImportLog(actor, 'data.backup.restored', { backupId, rollbackBackupId: rollbackId });
       return c.json({ status: 'success', message: 'Backup restored. A backup of the replaced data was retained.', rollbackBackupId: rollbackId });
     } catch (error) {
-      await redis.del(FACULTY_KEY, COURSES_KEY);
       const partialFaculty = await redis.hGetAll(FACULTY_KEY);
       const partialRatingKeys = Object.keys(partialFaculty).map(id => RATINGS_PREFIX + id);
-      if (partialRatingKeys.length) await redis.del(...partialRatingKeys);
+      await redis.del(FACULTY_KEY, COURSES_KEY, ...partialRatingKeys);
       await setHashInBatches(FACULTY_KEY, currentFaculty);
       await setHashInBatches(COURSES_KEY, currentCourses);
       for (const [id, ratings] of Object.entries(currentRatings)) await setHashInBatches(RATINGS_PREFIX + id, ratings);
