@@ -102,7 +102,17 @@ dataTransfer.get('/export', async (c) => {
       redis.hGetAll(FACULTY_KEY),
       redis.hGetAll(COURSES_KEY),
     ]);
-    const faculty = parseHash<Faculty>(storedFaculty);
+    for (const [id, value] of Object.entries(storedFaculty)) {
+      try {
+        const record = JSON.parse(value) as Faculty;
+        if (!record.facultyId) {
+          const sequence = await redis.incrBy('faculty:id-counter', 1);
+          await redis.hSet(FACULTY_KEY, { [id]: JSON.stringify({ ...record, facultyId: 'VITBFAC' + String(sequence).padStart(4, '0') }) });
+        }
+      } catch { /* Skip malformed legacy faculty records in exports. */ }
+    }
+    const refreshedFaculty = await redis.hGetAll(FACULTY_KEY);
+    const faculty = parseHash<Faculty>(refreshedFaculty);
     const courses = parseHash<{ code?: string }>(storedCourses)
       .filter(({ id, record }) => COURSE_CODE_PATTERN.test(record.code ?? id))
       .map(({ id, record }) => ({ course_code: record.code ?? id }));
@@ -193,6 +203,7 @@ dataTransfer.get('/export', async (c) => {
     });
   } catch (error) {
     console.error('Data export failed:', error);
+    try { await writeImportLog(actor, 'data.export', { dataset, error: error instanceof Error ? error.message : 'Unknown failure' }, 'failure'); } catch { /* Preserve the export error. */ }
     return c.json({
       status: 'error',
       message: error instanceof Error ? error.message : 'Unable to export data.',
@@ -480,6 +491,7 @@ dataTransfer.post('/import/apply', async (c) => {
       const backup = { backupId, createdAt: Date.now(), actorId: actor.id, faculty: currentFaculty, courses: currentCourses, ratings: currentRatings };
       await redis.hSet(backupKey, { snapshot: JSON.stringify(backup) });
       await redis.hSet('import:backups', { [backupId]: JSON.stringify({ backupId, createdAt: backup.createdAt, actorId: actor.id, facultyCount: Object.keys(currentFaculty).length, courseCount: Object.keys(currentCourses).length }) });
+      await writeImportLog(actor, 'data.backup.created', { backupId, type: 'full-replacement' });
 
       try {
         await synchronizeFacultyIdCounter(rows.faculties.map(row => row.faculty_id));
@@ -534,7 +546,6 @@ dataTransfer.post('/import/apply', async (c) => {
           courses: Object.keys(newCourses).length,
           ratings: Object.values(newRatings).reduce((sum, item) => sum + Object.keys(item).length, 0),
         });
-        await writeImportLog(actor, 'data.backup.created', { backupId, type: 'full-replacement' });
         return c.json({ status: 'success', message: 'Full replacement completed. A recovery backup was retained.', backupId });
       } catch (error) {
         const partialFaculty = await redis.hGetAll(FACULTY_KEY);
@@ -593,7 +604,7 @@ dataTransfer.post('/import/apply', async (c) => {
       }
     }
 
-    const details = { mode, addedFaculties: added, matchedFaculties: matched, addedCourses: Object.keys(newCourses).length, importedRatings };
+    const details = { mode, addedFaculties: added, matchedFaculties: matched, skippedFaculties: rows.faculties.length - mapping.size, addedCourses: Object.keys(newCourses).length, courseCodesAdded: Object.keys(newCourses), importedRatings };
     await writeImportLog(actor, 'data.import.' + mode, details);
     return c.json({ status: 'success', message: 'Import completed.', ...details });
   } catch (error) {
