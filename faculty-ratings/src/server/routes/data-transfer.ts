@@ -224,8 +224,7 @@ const validRatingRow = (row: CsvRow) => {
     /^\\d{1,16}$/.test(row.created_at ?? '');
 };
 
-const readImportArchive = async (c: import('hono').Context) => {
-  const form = await c.req.formData();
+const readImportArchive = async (form: FormData) => {
   const mode = String(form.get('mode') ?? '') as ImportMode;
   const upload = form.get('file');
   if (!['faculty', 'faculty-courses', 'courses', 'ratings', 'all'].includes(mode)) throw new Error('Select a valid import mode.');
@@ -271,7 +270,7 @@ dataTransfer.post('/import/preview', async (c) => {
   const actor = await getAdminActor();
   if (!actor) return c.json({ status: 'error', message: 'Approved admin access is required.' }, 403);
   try {
-    const { mode, rows } = await readImportArchive(c);
+    const { mode, rows } = await readImportArchive(await c.req.formData());
     const [storedFaculty, storedCourses] = await Promise.all([redis.hGetAll(FACULTY_KEY), redis.hGetAll(COURSES_KEY)]);
     const existingFaculty = parseHash<Faculty>(storedFaculty).map(({ id, record }) => ({ id, record }));
     const existingCourses = new Set(Object.keys(storedCourses));
@@ -360,7 +359,8 @@ const sourceFacultyMap = async (
   addMissing: boolean,
   resolutions: Record<string, string>,
   selectedCourses: Set<string>,
-  assignmentRows: CsvRow[]
+  assignmentRows: CsvRow[],
+  preserveSourceIds = false
 ) => {
   const stored = await redis.hGetAll(FACULTY_KEY);
   const existing = parseHash<Faculty>(stored);
@@ -404,7 +404,9 @@ const sourceFacultyMap = async (
     }
 
     if (!addMissing) continue;
-    const permanentId = await createPermanentFacultyId(usedIds);
+    const permanentId = preserveSourceIds && /^VITBFAC[0-9]{4,}$/.test(row.faculty_id) && !usedIds.has(row.faculty_id)
+      ? (usedIds.add(row.faculty_id), row.faculty_id)
+      : await createPermanentFacultyId(usedIds);
     const key = randomUUID();
     const courseCodes = Array.from(new Set((assignmentsBySource.get(row.faculty_id) ?? []).filter(code => selectedCourses.has(code))));
     const record: Faculty = {
@@ -433,10 +435,7 @@ dataTransfer.post('/import/apply', async (c) => {
     const options = JSON.parse(String(form.get('options') ?? '{}')) as ImportOptions;
     const upload = form.get('file');
     if (!(upload instanceof File)) throw new Error('Choose the validated ZIP file again to continue.');
-    const archiveRequest = new Request(c.req.raw.url, { method: 'POST', body: form });
-    const { mode: parsedMode, rows } = await readImportArchive({
-      req: { formData: async () => form },
-    } as unknown as import('hono').Context);
+    const { mode: parsedMode, rows } = await readImportArchive(form);
     mode = parsedMode;
     const selectedCourses = new Set(
       Array.isArray(options.selectedCourses)
@@ -551,7 +550,7 @@ dataTransfer.post('/import/apply', async (c) => {
     const availableCodes = new Set([...Object.keys(currentCourses), ...Object.keys(newCourses)]);
     const assignments = rows.assignments.filter(row => availableCodes.has(row.course_code.trim().toUpperCase()));
     const addMissingFaculty = mode === 'faculty' || mode === 'ratings' && options.addMissingFaculty === true;
-    const { mapping, added, matched } = await sourceFacultyMap(rows.faculties, addMissingFaculty, resolutions, availableCodes, assignments);
+    const { mapping, added, matched } = await sourceFacultyMap(rows.faculties, addMissingFaculty, resolutions, availableCodes, assignments, mode === 'faculty' && Object.keys(await redis.hGetAll(FACULTY_KEY)).length === 0);
     let importedRatings = 0;
 
     if (mode === 'ratings') {
