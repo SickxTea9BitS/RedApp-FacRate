@@ -58,7 +58,18 @@ const hasAdminAccess = async () => {
   if (!userId) return false;
   const normalizedId = normalizeRedditId(userId);
   if (normalizedId === OWNER_REDDIT_ID) return true;
-  return Boolean(await redis.hGet(ADMIN_USERS_KEY, normalizedId));
+
+  const stored = await redis.hGet(ADMIN_USERS_KEY, normalizedId);
+  if (!stored) return false;
+
+  try {
+    const record = JSON.parse(stored) as { active?: boolean };
+    // Older admin records did not have an active field, so treat those as active.
+    return record.active !== false;
+  } catch {
+    // Invalid records must never grant moderator access.
+    return false;
+  }
 };
 
 api.use('/mod/*', async (c, next) => {
