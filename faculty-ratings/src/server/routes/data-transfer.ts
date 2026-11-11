@@ -218,7 +218,11 @@ dataTransfer.get('/export', async (c) => {
 
 
 type ImportMode = 'faculty' | 'faculty-courses' | 'courses' | 'ratings' | 'all';
-type CsvRow = Record<string, string>;
+type CsvRow = Record<string, string> & {
+  faculty_id: string; first_name: string; middle_name: string; last_name: string; school: string;
+  course_code: string; teaching: string; internal_marking: string; exam_evaluation: string;
+  overall_recommendation: string; class_average: string; question_provision: string; created_at: string;
+};
 
 const validFacultyRow = (row: CsvRow) =>
   Boolean(row.first_name?.trim()) &&
@@ -277,11 +281,12 @@ const readImportArchive = async (form: FormData) => {
   if (mode === 'faculty' && files['courses.csv'] !== undefined) requireHeaders('courses.csv', ['course_code']);
   if (mode === 'faculty' && files['faculty_course_assignments.csv'] !== undefined) requireHeaders('faculty_course_assignments.csv', ['faculty_id', 'course_code']);
   if (mode === 'faculty-courses' && files['courses.csv'] !== undefined) requireHeaders('courses.csv', ['course_code']);
+  const parseRows = (source: string): CsvRow[] => parseCsv(source) as unknown as CsvRow[];
   const rows = {
-    faculties: files['faculties.csv'] === undefined ? [] : parseCsv(files['faculties.csv']),
-    courses: files['courses.csv'] === undefined ? [] : parseCsv(files['courses.csv']),
-    assignments: files['faculty_course_assignments.csv'] === undefined ? [] : parseCsv(files['faculty_course_assignments.csv']),
-    ratings: files['ratings.csv'] === undefined ? [] : parseCsv(files['ratings.csv']),
+    faculties: files['faculties.csv'] === undefined ? [] : parseRows(files['faculties.csv']),
+    courses: files['courses.csv'] === undefined ? [] : parseRows(files['courses.csv']),
+    assignments: files['faculty_course_assignments.csv'] === undefined ? [] : parseRows(files['faculty_course_assignments.csv']),
+    ratings: files['ratings.csv'] === undefined ? [] : parseRows(files['ratings.csv']),
   };
   if (Object.values(rows).some(list => list.length > 100_000)) throw new Error('The archive contains too many CSV rows.');
   if (rows.faculties.some(row => !validFacultyRow(row))) throw new Error('One or more faculty rows contain invalid names or school values.');
