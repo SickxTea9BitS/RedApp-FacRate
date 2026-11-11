@@ -419,7 +419,7 @@ const sourceFacultyMap = async (
 ) => {
   const stored = await redis.hGetAll(FACULTY_KEY);
   const existing = parseHash<Faculty>(stored);
-  const byId = new Map(existing.filter(item => item.record.facultyId).map(item => [item.record.facultyId!, item]));
+  const byId = new Map<string, { id: string; record: Faculty }>(existing.filter(item => item.record.facultyId).map(item => [item.record.facultyId!, item] as const));
   const byIdentity = new Map<string, typeof existing>();
   for (const item of existing) {
     const key = identityKey({ first_name: item.record.firstName, middle_name: item.record.middleName, last_name: item.record.lastName, school: item.record.school });
