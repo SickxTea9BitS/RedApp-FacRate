@@ -346,6 +346,15 @@ const setHashInBatches = async (key: string, values: Record<string, string>) => 
   }
 };
 
+const synchronizeFacultyIdCounter = async (facultyIds: string[]) => {
+  const maximum = facultyIds.reduce((max, id) => {
+    const match = /^VITBFAC([0-9]+)$/.exec(id);
+    return match ? Math.max(max, Number(match[1])) : max;
+  }, 0);
+  const current = Number(await redis.get('faculty:id-counter') ?? '0');
+  if (Number.isSafeInteger(maximum) && maximum > current) await redis.incrBy('faculty:id-counter', maximum - current);
+};
+
 const createPermanentFacultyId = async (used: Set<string>) => {
   for (let attempt = 0; attempt < 100_000; attempt += 1) {
     const sequence = await redis.incrBy('faculty:id-counter', 1);
@@ -372,6 +381,7 @@ const sourceFacultyMap = async (
     byIdentity.set(key, [...(byIdentity.get(key) ?? []), item]);
   }
   const usedIds = new Set(existing.map(item => item.record.facultyId).filter((id): id is string => Boolean(id)));
+  if (preserveSourceIds) await synchronizeFacultyIdCounter(rows.map(row => row.faculty_id));
   for (const row of rows) {
     if (byId.has(row.faculty_id)) continue;
     const candidates = byIdentity.get(identityKey(row)) ?? [];
@@ -469,8 +479,10 @@ dataTransfer.post('/import/apply', async (c) => {
       const backupKey = 'import:backup:' + backupId;
       const backup = { backupId, createdAt: Date.now(), actorId: actor.id, faculty: currentFaculty, courses: currentCourses, ratings: currentRatings };
       await redis.hSet(backupKey, { snapshot: JSON.stringify(backup) });
+      await redis.hSet('import:backups', { [backupId]: JSON.stringify({ backupId, createdAt: backup.createdAt, actorId: actor.id, facultyCount: Object.keys(currentFaculty).length, courseCount: Object.keys(currentCourses).length }) });
 
       try {
+        await synchronizeFacultyIdCounter(rows.faculties.map(row => row.faculty_id));
         const coursesByCode = new Set(rows.courses.map(row => row.course_code.trim().toUpperCase()));
         const facultyKeyBySource = new Map<string, string>();
         const newFaculty: Record<string, string> = {};
@@ -589,5 +601,69 @@ dataTransfer.post('/import/apply', async (c) => {
     const message = error instanceof Error ? error.message : 'Unable to import data.';
     try { await writeImportLog(actor, 'data.import.' + mode, { error: message }, 'failure'); } catch { /* Preserve the import error if audit logging also fails. */ }
     return c.json({ status: 'error', message }, 400);
+  }
+});
+
+
+dataTransfer.get('/backups', async (c) => {
+  const actor = await getAdminActor();
+  if (!actor) return c.json({ status: 'error', message: 'Approved admin access is required.' }, 403);
+  const stored = await redis.hGetAll('import:backups');
+  const backups = Object.values(stored).flatMap(value => {
+    try { return [JSON.parse(value) as { backupId: string; createdAt: number; actorId: string; facultyCount: number; courseCount: number }]; }
+    catch { return []; }
+  }).sort((a, b) => b.createdAt - a.createdAt);
+  return c.json({ status: 'success', backups });
+});
+
+dataTransfer.post('/backups/:id/restore', async (c) => {
+  const actor = await getAdminActor();
+  if (!actor) return c.json({ status: 'error', message: 'Approved admin access is required.' }, 403);
+  const backupId = c.req.param('id');
+  if (!/^[0-9a-f-]{36}$/i.test(backupId)) return c.json({ status: 'error', message: 'Invalid backup ID.' }, 400);
+  try {
+    const storedBackup = await redis.hGet('import:backup:' + backupId, 'snapshot');
+    if (!storedBackup) return c.json({ status: 'error', message: 'Backup not found.' }, 404);
+    const backup = JSON.parse(storedBackup) as {
+      faculty: Record<string, string>;
+      courses: Record<string, string>;
+      ratings: Record<string, Record<string, string>>;
+    };
+    if (!backup.faculty || !backup.courses || !backup.ratings) throw new Error('Backup contents are incomplete.');
+    const currentFaculty = await redis.hGetAll(FACULTY_KEY);
+    const currentCourses = await redis.hGetAll(COURSES_KEY);
+    const currentRatings: Record<string, Record<string, string>> = {};
+    for (const id of Object.keys(currentFaculty)) currentRatings[id] = await redis.hGetAll(RATINGS_PREFIX + id);
+    const rollbackId = randomUUID();
+    await redis.hSet('import:backup:' + rollbackId, { snapshot: JSON.stringify({ backupId: rollbackId, createdAt: Date.now(), actorId: actor.id, faculty: currentFaculty, courses: currentCourses, ratings: currentRatings }) });
+    await redis.hSet('import:backups', { [rollbackId]: JSON.stringify({ backupId: rollbackId, createdAt: Date.now(), actorId: actor.id, facultyCount: Object.keys(currentFaculty).length, courseCount: Object.keys(currentCourses).length }) });
+
+    try {
+      const currentRatingKeys = Object.keys(currentFaculty).map(id => RATINGS_PREFIX + id);
+      await redis.del(FACULTY_KEY, COURSES_KEY, ...currentRatingKeys);
+      await setHashInBatches(FACULTY_KEY, backup.faculty);
+      await setHashInBatches(COURSES_KEY, backup.courses);
+      for (const [id, ratings] of Object.entries(backup.ratings)) await setHashInBatches(RATINGS_PREFIX + id, ratings);
+      const permanentIds = Object.values(backup.faculty).flatMap(value => {
+        try { const record = JSON.parse(value) as Faculty; return record.facultyId ? [record.facultyId] : []; }
+        catch { return []; }
+      });
+      await synchronizeFacultyIdCounter(permanentIds);
+      await writeImportLog(actor, 'data.backup.restored', { backupId, rollbackBackupId: rollbackId });
+      return c.json({ status: 'success', message: 'Backup restored. A backup of the replaced data was retained.', rollbackBackupId: rollbackId });
+    } catch (error) {
+      await redis.del(FACULTY_KEY, COURSES_KEY);
+      const partialFaculty = await redis.hGetAll(FACULTY_KEY);
+      const partialRatingKeys = Object.keys(partialFaculty).map(id => RATINGS_PREFIX + id);
+      if (partialRatingKeys.length) await redis.del(...partialRatingKeys);
+      await setHashInBatches(FACULTY_KEY, currentFaculty);
+      await setHashInBatches(COURSES_KEY, currentCourses);
+      for (const [id, ratings] of Object.entries(currentRatings)) await setHashInBatches(RATINGS_PREFIX + id, ratings);
+      await writeImportLog(actor, 'data.backup.restore-rollback', { backupId, rollbackBackupId: rollbackId, error: error instanceof Error ? error.message : 'Unknown failure' }, 'failure');
+      throw new Error('Backup restore failed; the destination data was restored. ' + (error instanceof Error ? error.message : 'Unknown failure'));
+    }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Unable to restore backup.';
+    return c.json({ status: 'error', message }, 500);
   }
 });
