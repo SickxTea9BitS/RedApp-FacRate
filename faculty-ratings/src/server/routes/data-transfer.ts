@@ -345,6 +345,7 @@ dataTransfer.post('/import/preview', async (c) => {
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unable to validate the import archive.';
+    try { await writeImportLog(actor, 'data.import.preview', { error: message }, 'failure'); } catch { /* Preserve the validation error. */ }
     return c.json({ status: 'error', message }, 400);
   }
 });
@@ -426,6 +427,7 @@ const sourceFacultyMap = async (
   const mapping = new Map<string, string>();
   let added = 0;
   let matched = 0;
+  const addedFacultyIds: string[] = [];
 
   for (const row of rows) {
     let target = byId.get(row.faculty_id);
@@ -470,9 +472,10 @@ const sourceFacultyMap = async (
     };
     await redis.hSet(FACULTY_KEY, { [key]: JSON.stringify(record) });
     mapping.set(row.faculty_id, key);
+    addedFacultyIds.push(permanentId);
     added += 1;
   }
-  return { mapping, added, matched };
+  return { mapping, added, matched, addedFacultyIds };
 };
 
 dataTransfer.post('/import/apply', async (c) => {
@@ -586,7 +589,7 @@ dataTransfer.post('/import/apply', async (c) => {
         added[code] = JSON.stringify({ id: code, code, createdAt: Date.now(), createdByUsername: actor.username, approvedAt: Date.now(), approvedByUsername: actor.username });
       }
       await setHashInBatches(COURSES_KEY, added);
-      await writeImportLog(actor, 'data.import.courses', { added: Object.keys(added).length });
+      await writeImportLog(actor, 'data.import.courses', { added: Object.keys(added).length, courseCodes: Object.keys(added) });
       return c.json({ status: 'success', message: Object.keys(added).length + ' course(s) imported.', addedCourses: Object.keys(added) });
     }
 
@@ -600,7 +603,7 @@ dataTransfer.post('/import/apply', async (c) => {
     const availableCodes = new Set([...Object.keys(currentCourses), ...Object.keys(newCourses)]);
     const assignments = rows.assignments.filter(row => availableCodes.has(row.course_code.trim().toUpperCase()));
     const addMissingFaculty = mode === 'faculty' || mode === 'ratings' && options.addMissingFaculty === true;
-    const { mapping, added, matched } = await sourceFacultyMap(rows.faculties, addMissingFaculty, resolutions, availableCodes, assignments, mode === 'faculty' && Object.keys(await redis.hGetAll(FACULTY_KEY)).length === 0);
+    const { mapping, added, matched, addedFacultyIds } = await sourceFacultyMap(rows.faculties, addMissingFaculty, resolutions, availableCodes, assignments, mode === 'faculty' && Object.keys(await redis.hGetAll(FACULTY_KEY)).length === 0);
     await setHashInBatches(COURSES_KEY, newCourses);
     let importedRatings = 0;
 
@@ -622,7 +625,7 @@ dataTransfer.post('/import/apply', async (c) => {
       }
     }
 
-    const details = { mode, addedFaculties: added, matchedFaculties: matched, skippedFaculties: rows.faculties.length - mapping.size, addedCourses: Object.keys(newCourses).length, courseCodesAdded: Object.keys(newCourses), importedRatings };
+    const details = { mode, addedFaculties: added, addedFacultyIds, matchedFaculties: matched, skippedFaculties: rows.faculties.length - mapping.size, addedCourses: Object.keys(newCourses).length, courseCodesAdded: Object.keys(newCourses), importedRatings };
     await writeImportLog(actor, 'data.import.' + mode, details);
     return c.json({ status: 'success', message: 'Import completed.', ...details });
   } catch (error) {
