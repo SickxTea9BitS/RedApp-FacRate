@@ -619,7 +619,7 @@ dataTransfer.post('/import/apply', async (c) => {
     const availableCodes = new Set([...Object.keys(currentCourses), ...Object.keys(newCourses)]);
     const assignments = rows.assignments.filter(row => availableCodes.has(row.course_code.trim().toUpperCase()));
     const addMissingFaculty = mode === 'faculty' || mode === 'ratings' && options.addMissingFaculty === true;
-    const { mapping, added, matched, addedFacultyIds } = await sourceFacultyMap(rows.faculties, addMissingFaculty, resolutions, availableCodes, assignments, mode === 'faculty' && Object.keys(await redis.hGetAll(FACULTY_KEY)).length === 0);
+    const { mapping, added, matched, addedFacultyIds } = await sourceFacultyMap(rows.faculties, addMissingFaculty, resolutions, availableCodes, assignments, (mode === 'faculty' || mode === 'ratings') && addMissingFaculty && Object.keys(await redis.hGetAll(FACULTY_KEY)).length === 0);
     await setHashInBatches(COURSES_KEY, newCourses);
     let importedRatings = 0;
 
