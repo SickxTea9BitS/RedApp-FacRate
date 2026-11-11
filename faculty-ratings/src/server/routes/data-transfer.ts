@@ -127,7 +127,7 @@ dataTransfer.get('/export', async (c) => {
       counts.faculties = rows.length;
     }
 
-    if (dataset === 'courses' || dataset === 'all' || dataset === 'faculty-courses' || (dataset === 'faculty' && includeAssignments)) {
+    if (dataset === 'courses' || dataset === 'all' || (dataset === 'faculty' && includeAssignments)) {
       files['courses.csv'] = toCsv(courses, ['course_code']);
       counts.courses = courses.length;
     }
@@ -283,7 +283,7 @@ const readImportArchive = async (form: FormData) => {
   const sourceFacultyIds = new Set(rows.faculties.map(row => row.faculty_id).filter(Boolean));
   if (rows.faculties.some(row => !row.faculty_id || !/^VITBFAC[0-9]{4,}$/.test(row.faculty_id))) throw new Error('Every faculty row must have a valid permanent faculty ID.');
   const sourceCourseCodes = new Set(rows.courses.map(row => row.course_code.trim().toUpperCase()));
-  if (rows.assignments.some(row => !sourceCourseCodes.has(row.course_code.trim().toUpperCase()))) {
+  if (mode !== 'faculty-courses' && rows.assignments.some(row => !sourceCourseCodes.has(row.course_code.trim().toUpperCase()))) {
     throw new Error('Every faculty course assignment must reference a course included in courses.csv.');
   }
   if (rows.assignments.some(row => !sourceFacultyIds.has(row.faculty_id) || !/^[A-Z]{3}[0-9]{4}$/.test((row.course_code ?? '').trim().toUpperCase()))) {
@@ -600,8 +600,8 @@ dataTransfer.post('/import/apply', async (c) => {
 
     const currentCourses = await redis.hGetAll(COURSES_KEY);
     const newCourses: Record<string, string> = {};
-    for (const row of rows.courses) {
-      const code = row.course_code.trim().toUpperCase();
+    const courseCodesToImport = new Set([...rows.courses.map(row => row.course_code.trim().toUpperCase()), ...(mode === 'faculty-courses' ? rows.assignments.map(row => row.course_code.trim().toUpperCase()) : [])]);
+    for (const code of courseCodesToImport) {
       if (currentCourses[code] || !selectedCourses.has(code)) continue;
       newCourses[code] = JSON.stringify({ id: code, code, createdAt: Date.now(), createdByUsername: actor.username, approvedAt: Date.now(), approvedByUsername: actor.username });
     }
