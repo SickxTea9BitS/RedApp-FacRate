@@ -83,6 +83,9 @@ const ensurePermanentFacultyIds = async () => {
       }
     } catch { /* Preserve malformed legacy data for moderators to repair. */ }
   }
+  const refreshed = await redis.hGetAll(FACULTY_KEY);
+  const permanentIds = parseHash<Faculty>(refreshed).flatMap(item => item.record.facultyId ? [item.record.facultyId] : []);
+  await synchronizeFacultyIdCounter(permanentIds);
 };
 
 const facultyRows = (faculty: Array<{ id: string; record: Faculty }>) =>
@@ -271,6 +274,9 @@ const readImportArchive = async (form: FormData) => {
     all: [['faculties.csv', ['faculty_id', 'first_name', 'middle_name', 'last_name', 'school']], ['courses.csv', ['course_code']], ['faculty_course_assignments.csv', ['faculty_id', 'course_code']], ['ratings.csv', ['faculty_id', 'teaching', 'internal_marking', 'exam_evaluation', 'overall_recommendation', 'class_average', 'question_provision', 'created_at']]],
   };
   for (const [name, headers] of headerRequirements[mode] ?? []) requireHeaders(name, headers);
+  if (mode === 'faculty' && files['courses.csv'] !== undefined) requireHeaders('courses.csv', ['course_code']);
+  if (mode === 'faculty' && files['faculty_course_assignments.csv'] !== undefined) requireHeaders('faculty_course_assignments.csv', ['faculty_id', 'course_code']);
+  if (mode === 'faculty-courses' && files['courses.csv'] !== undefined) requireHeaders('courses.csv', ['course_code']);
   const rows = {
     faculties: files['faculties.csv'] === undefined ? [] : parseCsv(files['faculties.csv']),
     courses: files['courses.csv'] === undefined ? [] : parseCsv(files['courses.csv']),
