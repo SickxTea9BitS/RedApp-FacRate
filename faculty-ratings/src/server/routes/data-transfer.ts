@@ -111,10 +111,7 @@ dataTransfer.get('/export', async (c) => {
   }
 
   try {
-    const [storedFaculty, storedCourses] = await Promise.all([
-      redis.hGetAll(FACULTY_KEY),
-      redis.hGetAll(COURSES_KEY),
-    ]);
+    const storedCourses = await redis.hGetAll(COURSES_KEY);
     await ensurePermanentFacultyIds();
     const refreshedFaculty = await redis.hGetAll(FACULTY_KEY);
     const faculty = parseHash<Faculty>(refreshedFaculty);
