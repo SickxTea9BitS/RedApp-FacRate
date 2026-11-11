@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { Hono } from 'hono';
 import { context, redis, reddit } from '@devvit/web/server';
-import { createZip, toCsv } from './data-transfer';
+import { createZip, parseCsv, readZip, toCsv } from '../data-transfer';
 
 export const dataTransfer = new Hono();
 
@@ -592,7 +592,7 @@ dataTransfer.post('/import/apply', async (c) => {
         await setHashInBatches(COURSES_KEY, currentCourses);
         for (const [id, ratings] of Object.entries(currentRatings)) await setHashInBatches(RATINGS_PREFIX + id, ratings);
         await writeImportLog(actor, 'data.import.full-replacement.rollback', { backupId, error: error instanceof Error ? error.message : 'Unknown failure' }, 'failure');
-        throw new Error('Full replacement failed; the original data was restored. ' + (error instanceof Error ? error.message : 'Unknown failure'));
+        throw new Error('Full replacement failed; the original data was restored. ' + (error instanceof Error ? error.message : 'Unknown failure'), { cause: error });
       }
     }
 
@@ -710,7 +710,7 @@ dataTransfer.post('/backups/:id/restore', async (c) => {
       await setHashInBatches(COURSES_KEY, currentCourses);
       for (const [id, ratings] of Object.entries(currentRatings)) await setHashInBatches(RATINGS_PREFIX + id, ratings);
       await writeImportLog(actor, 'data.backup.restore-rollback', { backupId, rollbackBackupId: rollbackId, error: error instanceof Error ? error.message : 'Unknown failure' }, 'failure');
-      throw new Error('Backup restore failed; the destination data was restored. ' + (error instanceof Error ? error.message : 'Unknown failure'));
+      throw new Error('Backup restore failed; the destination data was restored. ' + (error instanceof Error ? error.message : 'Unknown failure'), { cause: error });
     }
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unable to restore backup.';
