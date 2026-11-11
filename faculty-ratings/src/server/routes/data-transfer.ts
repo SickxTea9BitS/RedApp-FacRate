@@ -319,3 +319,265 @@ dataTransfer.post('/import/preview', async (c) => {
     return c.json({ status: 'error', message }, 400);
   }
 });
+
+
+type ImportOptions = {
+  selectedCourses?: unknown;
+  addMissingFaculty?: unknown;
+  facultyResolutions?: unknown;
+  confirmation?: unknown;
+  finalConfirmation?: unknown;
+};
+
+const writeImportLog = async (
+  actor: { id: string; username: string },
+  action: string,
+  details: Record<string, unknown>,
+  result: 'success' | 'failure' = 'success'
+) => {
+  const entry = { id: randomUUID(), actorId: actor.id, actorUsername: actor.username, action, timestamp: Date.now(), details, result };
+  await redis.zAdd(ADMIN_LOG_KEY, { member: JSON.stringify(entry), score: entry.timestamp });
+};
+
+const setHashInBatches = async (key: string, values: Record<string, string>) => {
+  const entries = Object.entries(values);
+  for (let index = 0; index < entries.length; index += 200) {
+    await redis.hSet(key, Object.fromEntries(entries.slice(index, index + 200)));
+  }
+};
+
+const createPermanentFacultyId = async (used: Set<string>) => {
+  for (let attempt = 0; attempt < 100_000; attempt += 1) {
+    const sequence = await redis.incrBy('faculty:id-counter', 1);
+    const id = 'VITBFAC' + String(sequence).padStart(4, '0');
+    if (!used.has(id)) { used.add(id); return id; }
+  }
+  throw new Error('Unable to allocate a unique permanent faculty ID.');
+};
+
+const sourceFacultyMap = async (
+  rows: CsvRow[],
+  addMissing: boolean,
+  resolutions: Record<string, string>,
+  selectedCourses: Set<string>,
+  assignmentRows: CsvRow[]
+) => {
+  const stored = await redis.hGetAll(FACULTY_KEY);
+  const existing = parseHash<Faculty>(stored);
+  const byId = new Map(existing.filter(item => item.record.facultyId).map(item => [item.record.facultyId!, item]));
+  const byIdentity = new Map<string, typeof existing>();
+  for (const item of existing) {
+    const key = identityKey({ first_name: item.record.firstName, middle_name: item.record.middleName, last_name: item.record.lastName, school: item.record.school });
+    byIdentity.set(key, [...(byIdentity.get(key) ?? []), item]);
+  }
+  const usedIds = new Set(existing.map(item => item.record.facultyId).filter((id): id is string => Boolean(id)));
+  const assignmentsBySource = new Map<string, string[]>();
+  for (const row of assignmentRows) assignmentsBySource.set(row.faculty_id, [...(assignmentsBySource.get(row.faculty_id) ?? []), row.course_code.trim().toUpperCase()]);
+  const mapping = new Map<string, string>();
+  let added = 0;
+  let matched = 0;
+
+  for (const row of rows) {
+    let target = byId.get(row.faculty_id);
+    if (!target) {
+      const identityMatches = byIdentity.get(identityKey(row)) ?? [];
+      if (identityMatches.length === 1) target = identityMatches[0];
+      else if (identityMatches.length > 1) {
+        const resolvedFacultyId = resolutions[row.faculty_id];
+        if (resolvedFacultyId) target = existing.find(item => item.record.facultyId === resolvedFacultyId);
+        if (!target) throw new Error('Faculty ' + row.faculty_id + ' has multiple possible matches. Resolve the ambiguity before importing.');
+      }
+    }
+
+    if (target) {
+      mapping.set(row.faculty_id, target.id);
+      matched += 1;
+      if (assignmentRows.length) {
+        const current = target.record.courseCodes ?? [];
+        const incoming = assignmentsBySource.get(row.faculty_id) ?? [];
+        const merged = Array.from(new Set([...current, ...incoming.filter(code => selectedCourses.has(code))]));
+        if (merged.length !== current.length) {
+          await redis.hSet(FACULTY_KEY, { [target.id]: JSON.stringify({ ...target.record, courseCodes: merged }) });
+        }
+      }
+      continue;
+    }
+
+    if (!addMissing) continue;
+    const permanentId = await createPermanentFacultyId(usedIds);
+    const key = randomUUID();
+    const courseCodes = Array.from(new Set((assignmentsBySource.get(row.faculty_id) ?? []).filter(code => selectedCourses.has(code))));
+    const record: Faculty = {
+      facultyId: permanentId,
+      firstName: row.first_name.trim(),
+      middleName: (row.middle_name ?? '').trim(),
+      lastName: row.last_name.trim(),
+      school: row.school.trim().toUpperCase(),
+      courseCodes,
+      createdAt: Date.now(),
+    };
+    await redis.hSet(FACULTY_KEY, { [key]: JSON.stringify(record) });
+    mapping.set(row.faculty_id, key);
+    added += 1;
+  }
+  return { mapping, added, matched };
+};
+
+dataTransfer.post('/import/apply', async (c) => {
+  const actor = await getAdminActor();
+  if (!actor) return c.json({ status: 'error', message: 'Approved admin access is required.' }, 403);
+
+  let mode = 'unknown';
+  try {
+    const form = await c.req.formData();
+    const options = JSON.parse(String(form.get('options') ?? '{}')) as ImportOptions;
+    const upload = form.get('file');
+    if (!(upload instanceof File)) throw new Error('Choose the validated ZIP file again to continue.');
+    const archiveRequest = new Request(c.req.raw.url, { method: 'POST', body: form });
+    const { mode: parsedMode, rows } = await readImportArchive({
+      req: { formData: async () => form },
+    } as unknown as import('hono').Context);
+    mode = parsedMode;
+    const selectedCourses = new Set(
+      Array.isArray(options.selectedCourses)
+        ? options.selectedCourses.filter((value): value is string => typeof value === 'string' && /^[A-Z]{3}[0-9]{4}$/.test(value))
+        : []
+    );
+    const resolutions = options.facultyResolutions && typeof options.facultyResolutions === 'object'
+      ? options.facultyResolutions as Record<string, string>
+      : {};
+
+    if (mode === 'all') {
+      if (options.confirmation !== 'CONFIRM' || options.finalConfirmation !== true) {
+        throw new Error('Full replacement requires typing CONFIRM and accepting the final confirmation.');
+      }
+      const currentFaculty = await redis.hGetAll(FACULTY_KEY);
+      const currentCourses = await redis.hGetAll(COURSES_KEY);
+      const currentRatings: Record<string, Record<string, string>> = {};
+      for (const id of Object.keys(currentFaculty)) currentRatings[id] = await redis.hGetAll(RATINGS_PREFIX + id);
+      const backupId = randomUUID();
+      const backupKey = 'import:backup:' + backupId;
+      const backup = { backupId, createdAt: Date.now(), actorId: actor.id, faculty: currentFaculty, courses: currentCourses, ratings: currentRatings };
+      await redis.hSet(backupKey, { snapshot: JSON.stringify(backup) });
+
+      try {
+        const coursesByCode = new Set(rows.courses.map(row => row.course_code.trim().toUpperCase()));
+        const facultyKeyBySource = new Map<string, string>();
+        const newFaculty: Record<string, string> = {};
+        const usedIds = new Set<string>();
+        for (const row of rows.faculties) {
+          if (usedIds.has(row.faculty_id)) throw new Error('Duplicate permanent faculty ID in full replacement.');
+          usedIds.add(row.faculty_id);
+          const key = randomUUID();
+          facultyKeyBySource.set(row.faculty_id, key);
+          const assigned = rows.assignments.filter(item => item.faculty_id === row.faculty_id).map(item => item.course_code.trim().toUpperCase()).filter(code => coursesByCode.has(code));
+          newFaculty[key] = JSON.stringify({
+            facultyId: row.faculty_id,
+            firstName: row.first_name.trim(),
+            middleName: (row.middle_name ?? '').trim(),
+            lastName: row.last_name.trim(),
+            school: row.school.trim().toUpperCase(),
+            courseCodes: Array.from(new Set(assigned)),
+            createdAt: Date.now(),
+          });
+        }
+        const newCourses: Record<string, string> = {};
+        for (const row of rows.courses) {
+          const code = row.course_code.trim().toUpperCase();
+          newCourses[code] = JSON.stringify({ id: code, code, createdAt: Date.now(), createdByUsername: actor.username, approvedAt: Date.now(), approvedByUsername: actor.username });
+        }
+        const newRatings: Record<string, Record<string, string>> = {};
+        for (const row of rows.ratings) {
+          const facultyKey = facultyKeyBySource.get(row.faculty_id);
+          if (!facultyKey) continue;
+          const rating: Rating = {
+            teaching: Number(row.teaching),
+            internalMarking: Number(row.internal_marking),
+            examEvaluation: Number(row.exam_evaluation),
+            overallRecommendation: Number(row.overall_recommendation),
+            classAverage: Number(row.class_average),
+            questionProvision: row.question_provision as Rating['questionProvision'],
+            createdAt: Number(row.created_at),
+          };
+          (newRatings[facultyKey] ??= {})['imported:' + randomUUID()] = JSON.stringify(rating);
+        }
+        const oldRatingKeys = Object.keys(currentFaculty).map(id => RATINGS_PREFIX + id);
+        await redis.del(FACULTY_KEY, COURSES_KEY, ...oldRatingKeys);
+        await setHashInBatches(FACULTY_KEY, newFaculty);
+        await setHashInBatches(COURSES_KEY, newCourses);
+        for (const [facultyKey, ratings] of Object.entries(newRatings)) await setHashInBatches(RATINGS_PREFIX + facultyKey, ratings);
+        await writeImportLog(actor, 'data.import.full-replacement', {
+          backupId,
+          faculties: Object.keys(newFaculty).length,
+          courses: Object.keys(newCourses).length,
+          ratings: Object.values(newRatings).reduce((sum, item) => sum + Object.keys(item).length, 0),
+        });
+        await writeImportLog(actor, 'data.backup.created', { backupId, type: 'full-replacement' });
+        return c.json({ status: 'success', message: 'Full replacement completed. A recovery backup was retained.', backupId });
+      } catch (error) {
+        await redis.del(FACULTY_KEY, COURSES_KEY);
+        const partialFaculty = await redis.hGetAll(FACULTY_KEY);
+        const partialRatingKeys = Object.keys(partialFaculty).map(id => RATINGS_PREFIX + id);
+        if (partialRatingKeys.length) await redis.del(...partialRatingKeys);
+        await setHashInBatches(FACULTY_KEY, currentFaculty);
+        await setHashInBatches(COURSES_KEY, currentCourses);
+        for (const [id, ratings] of Object.entries(currentRatings)) await setHashInBatches(RATINGS_PREFIX + id, ratings);
+        await writeImportLog(actor, 'data.import.full-replacement.rollback', { backupId, error: error instanceof Error ? error.message : 'Unknown failure' }, 'failure');
+        throw new Error('Full replacement failed; the original data was restored. ' + (error instanceof Error ? error.message : 'Unknown failure'));
+      }
+    }
+
+    if (mode === 'courses') {
+      const current = await redis.hGetAll(COURSES_KEY);
+      const added: Record<string, string> = {};
+      for (const row of rows.courses) {
+        const code = row.course_code.trim().toUpperCase();
+        if (current[code] || !selectedCourses.has(code)) continue;
+        added[code] = JSON.stringify({ id: code, code, createdAt: Date.now(), createdByUsername: actor.username, approvedAt: Date.now(), approvedByUsername: actor.username });
+      }
+      await setHashInBatches(COURSES_KEY, added);
+      await writeImportLog(actor, 'data.import.courses', { added: Object.keys(added).length });
+      return c.json({ status: 'success', message: Object.keys(added).length + ' course(s) imported.', addedCourses: Object.keys(added) });
+    }
+
+    const currentCourses = await redis.hGetAll(COURSES_KEY);
+    const newCourses: Record<string, string> = {};
+    for (const row of rows.courses) {
+      const code = row.course_code.trim().toUpperCase();
+      if (currentCourses[code] || !selectedCourses.has(code)) continue;
+      newCourses[code] = JSON.stringify({ id: code, code, createdAt: Date.now(), createdByUsername: actor.username, approvedAt: Date.now(), approvedByUsername: actor.username });
+    }
+    await setHashInBatches(COURSES_KEY, newCourses);
+    const availableCodes = new Set([...Object.keys(currentCourses), ...Object.keys(newCourses)]);
+    const assignments = rows.assignments.filter(row => availableCodes.has(row.course_code.trim().toUpperCase()));
+    const addMissingFaculty = mode === 'faculty' || mode === 'ratings' && options.addMissingFaculty === true;
+    const { mapping, added, matched } = await sourceFacultyMap(rows.faculties, addMissingFaculty, resolutions, availableCodes, assignments);
+    let importedRatings = 0;
+
+    if (mode === 'ratings') {
+      for (const row of rows.ratings) {
+        const facultyKey = mapping.get(row.faculty_id);
+        if (!facultyKey) continue;
+        const rating: Rating = {
+          teaching: Number(row.teaching),
+          internalMarking: Number(row.internal_marking),
+          examEvaluation: Number(row.exam_evaluation),
+          overallRecommendation: Number(row.overall_recommendation),
+          classAverage: Number(row.class_average),
+          questionProvision: row.question_provision as Rating['questionProvision'],
+          createdAt: Number(row.created_at),
+        };
+        await redis.hSet(RATINGS_PREFIX + facultyKey, { ['imported:' + randomUUID()]: JSON.stringify(rating) });
+        importedRatings += 1;
+      }
+    }
+
+    const details = { mode, addedFaculties: added, matchedFaculties: matched, addedCourses: Object.keys(newCourses).length, importedRatings };
+    await writeImportLog(actor, 'data.import.' + mode, details);
+    return c.json({ status: 'success', message: 'Import completed.', ...details });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Unable to import data.';
+    try { await writeImportLog(actor, 'data.import.' + mode, { error: message }, 'failure'); } catch { /* Preserve the import error if audit logging also fails. */ }
+    return c.json({ status: 'error', message }, 400);
+  }
+});
