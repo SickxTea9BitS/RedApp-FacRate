@@ -159,7 +159,7 @@ export const parseCsv = (source: string) => {
   let field = '';
   let quoted = false;
   for (let i = 0; i < source.length; i += 1) {
-    const char = source[i];
+    const char = source[i]!;
     if (quoted) {
       if (char === '"' && source[i + 1] === '"') { field += '"'; i += 1; }
       else if (char === '"') quoted = false;
