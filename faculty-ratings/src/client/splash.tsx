@@ -286,7 +286,7 @@ export const App = () => {
     const checkAdmin = async () => {
       try {
         const response = await fetch('/api/admin/status');
-        const result = await response.json() as { status: string; role?: 'owner' | 'admin' | 'none'; moderatorLogCount?: number; adminLogCount?: number; showLogWarning?: boolean };
+        const result = await response.json() as { status: string; role?: 'owner' | 'admin' | 'none'; moderatorLogCount?: number; adminLogCount?: number; securityLogCount?: number; showLogWarning?: boolean };
         if (active && response.ok && result.status === 'success') {
           setAdminRole(result.role ?? 'none');
           setAdminStatus({ moderatorLogCount: result.moderatorLogCount ?? 0, adminLogCount: result.adminLogCount ?? 0, securityLogCount: result.securityLogCount ?? 0, showLogWarning: Boolean(result.showLogWarning) });
@@ -918,7 +918,7 @@ export const App = () => {
       const result = await response.json();
       if (!response.ok || result.status !== 'success') throw new Error(result.message || 'Unable to load admin status.');
       setAdminRole(result.role ?? 'none');
-      setAdminStatus({ moderatorLogCount: result.moderatorLogCount ?? 0, adminLogCount: result.adminLogCount ?? 0, showLogWarning: Boolean(result.showLogWarning) });
+      setAdminStatus({ moderatorLogCount: result.moderatorLogCount ?? 0, adminLogCount: result.adminLogCount ?? 0, securityLogCount: result.securityLogCount ?? 0, showLogWarning: Boolean(result.showLogWarning) });
     } catch (error) {
       setAdminError(error instanceof Error ? error.message : 'Unable to load admin status.');
     }
