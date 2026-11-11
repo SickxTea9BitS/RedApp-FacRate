@@ -192,7 +192,7 @@ export const App = () => {
   const [restoreBackupId, setRestoreBackupId] = useState('');
   const [restoreConfirmation, setRestoreConfirmation] = useState('');
   const [finalRestoreConfirmation, setFinalRestoreConfirmation] = useState(false);
-  const [adminStatus, setAdminStatus] = useState<{ moderatorLogCount: number; adminLogCount: number; showLogWarning: boolean }>({ moderatorLogCount: 0, adminLogCount: 0, showLogWarning: false });
+  const [adminStatus, setAdminStatus] = useState<{ moderatorLogCount: number; adminLogCount: number; securityLogCount: number; showLogWarning: boolean }>({ moderatorLogCount: 0, adminLogCount: 0, securityLogCount: 0, showLogWarning: false });
   const [moderatorCheckLoading, setModeratorCheckLoading] = useState(true);
   const [moderatorRequests, setModeratorRequests] = useState<FacultyRequest[]>(
     []
@@ -289,7 +289,7 @@ export const App = () => {
         const result = await response.json() as { status: string; role?: 'owner' | 'admin' | 'none'; moderatorLogCount?: number; adminLogCount?: number; showLogWarning?: boolean };
         if (active && response.ok && result.status === 'success') {
           setAdminRole(result.role ?? 'none');
-          setAdminStatus({ moderatorLogCount: result.moderatorLogCount ?? 0, adminLogCount: result.adminLogCount ?? 0, showLogWarning: Boolean(result.showLogWarning) });
+          setAdminStatus({ moderatorLogCount: result.moderatorLogCount ?? 0, adminLogCount: result.adminLogCount ?? 0, securityLogCount: result.securityLogCount ?? 0, showLogWarning: Boolean(result.showLogWarning) });
         }
       } catch { if (active) setAdminRole('none'); }
     };
@@ -2884,6 +2884,7 @@ export const App = () => {
               <h2 style={{ margin: 0 }}>Log overview</h2>
               <p style={{ margin: 0 }}>Moderator logs: {adminStatus.moderatorLogCount.toLocaleString()}</p>
               <p style={{ margin: 0 }}>Admin logs: {adminStatus.adminLogCount.toLocaleString()}</p>
+              {adminRole === 'owner' && <p style={{ margin: 0 }}>Protected security audit: {adminStatus.securityLogCount.toLocaleString()}</p>}
               <p style={styles.muted}>Logs are retained until the owner clears them. The security audit log is retained separately and is never removed by normal log clearing.</p>
               {adminRole === 'owner' && <button style={styles.secondaryButton} onClick={() => void exportAdminLogs()}>Export Logs (JSON)</button>}
             </div>
