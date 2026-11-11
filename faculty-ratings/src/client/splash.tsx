@@ -162,7 +162,7 @@ export const App = () => {
 
   const [isModerator, setIsModerator] = useState(false);
   const [adminRole, setAdminRole] = useState<'owner' | 'admin' | 'none'>('none');
-  const [adminSectionView, setAdminSectionView] = useState<'overview' | 'admins' | 'moderator-logs' | 'admin-logs' | 'security-logs' | 'data-export'>('overview');
+  const [adminSectionView, setAdminSectionView] = useState<'overview' | 'admins' | 'moderator-logs' | 'admin-logs' | 'security-logs' | 'data-export' | 'data-import'>('overview');
   const [adminUsers, setAdminUsers] = useState<Array<{ id: string; username: string; addedAt: number }>>([]);
   const [pendingAdminRemoval, setPendingAdminRemoval] = useState<{ id: string; username: string } | null>(null);
   const [adminLogs, setAdminLogs] = useState<Array<{ id: string; actorUsername: string; action: string; timestamp: number; details: Record<string, unknown>; result: string }>>([]);
@@ -180,6 +180,13 @@ export const App = () => {
   const [dataTransferBusy, setDataTransferBusy] = useState(false);
   const [dataTransferMessage, setDataTransferMessage] = useState('');
   const [dataTransferError, setDataTransferError] = useState('');
+  const [dataImportMode, setDataImportMode] = useState<'faculty' | 'faculty-courses' | 'courses' | 'ratings' | 'all'>('faculty');
+  const [dataImportFile, setDataImportFile] = useState<File | null>(null);
+  const [dataImportPreview, setDataImportPreview] = useState<{ mode: string; counts: Record<string, number>; missingCourses: string[]; ambiguousFacultyIds: string[]; warnings: string[] } | null>(null);
+  const [selectedImportCourses, setSelectedImportCourses] = useState<string[]>([]);
+  const [addMissingRatingFaculty, setAddMissingRatingFaculty] = useState(false);
+  const [importConfirmation, setImportConfirmation] = useState('');
+  const [finalImportConfirmation, setFinalImportConfirmation] = useState(false);
   const [adminStatus, setAdminStatus] = useState<{ moderatorLogCount: number; adminLogCount: number; showLogWarning: boolean }>({ moderatorLogCount: 0, adminLogCount: 0, showLogWarning: false });
   const [moderatorCheckLoading, setModeratorCheckLoading] = useState(true);
   const [moderatorRequests, setModeratorRequests] = useState<FacultyRequest[]>(
@@ -978,6 +985,38 @@ export const App = () => {
       const url = URL.createObjectURL(blob);
       const link = document.createElement('a'); link.href = url; link.download = 'faculty-ratings-logs.json'; link.click(); URL.revokeObjectURL(url);
     } catch (error) { setAdminError(error instanceof Error ? error.message : 'Unable to export logs.'); }
+  };
+
+  const previewDataImport = async () => {
+    if (!dataImportFile) { setDataTransferError('Choose a ZIP file first.'); return; }
+    setDataTransferBusy(true); setDataTransferError(''); setDataTransferMessage(''); setDataImportPreview(null);
+    try {
+      const form = new FormData(); form.append('file', dataImportFile); form.append('mode', dataImportMode);
+      const response = await fetch('/api/admin/data/import/preview', { method: 'POST', body: form });
+      const result = await response.json();
+      if (!response.ok || result.status !== 'success') throw new Error(result.message || 'Unable to validate import.');
+      setDataImportPreview(result); setSelectedImportCourses(result.missingCourses ?? []); setImportConfirmation(''); setFinalImportConfirmation(false);
+      setDataTransferMessage('Validation completed. Review the preview before importing.');
+    } catch (error) { setDataTransferError(error instanceof Error ? error.message : 'Unable to validate import.'); }
+    finally { setDataTransferBusy(false); }
+  };
+
+  const applyDataImport = async () => {
+    if (!dataImportFile || !dataImportPreview) return;
+    if (dataImportMode === 'all' && (importConfirmation !== 'CONFIRM' || !finalImportConfirmation)) {
+      setDataTransferError('Full replacement requires typing CONFIRM and checking the final confirmation.'); return;
+    }
+    setDataTransferBusy(true); setDataTransferError(''); setDataTransferMessage('');
+    try {
+      const form = new FormData(); form.append('file', dataImportFile); form.append('mode', dataImportMode);
+      form.append('options', JSON.stringify({ selectedCourses: selectedImportCourses, addMissingFaculty: addMissingRatingFaculty, confirmation: importConfirmation, finalConfirmation: finalImportConfirmation }));
+      const response = await fetch('/api/admin/data/import/apply', { method: 'POST', body: form });
+      const result = await response.json();
+      if (!response.ok || result.status !== 'success') throw new Error(result.message || 'Import failed.');
+      setDataTransferMessage(result.message || 'Import completed.'); setDataImportPreview(null); setDataImportFile(null); setImportConfirmation(''); setFinalImportConfirmation(false);
+      const fileInput = document.getElementById('data-import-file') as HTMLInputElement | null; if (fileInput) fileInput.value = '';
+    } catch (error) { setDataTransferError(error instanceof Error ? error.message : 'Import failed.'); }
+    finally { setDataTransferBusy(false); }
   };
 
   const exportDataArchive = async () => {
@@ -2811,6 +2850,7 @@ export const App = () => {
             <button style={styles.secondaryButton} onClick={() => { setAdminSectionView('admin-logs'); void loadAdminLogs('admin'); }}>Admin Logs</button>
             {adminRole === 'owner' && <button style={styles.secondaryButton} onClick={() => { setAdminSectionView('security-logs'); void loadAdminLogs('security'); }}>Security Audit</button>}
             <button style={styles.secondaryButton} onClick={() => { setAdminSectionView('data-export'); setDataTransferError(''); setDataTransferMessage(''); }}>Data Export</button>
+            <button style={styles.secondaryButton} onClick={() => { setAdminSectionView('data-import'); setDataTransferError(''); setDataTransferMessage(''); }}>Data Import</button>
           </div>
           {adminSectionView === 'overview' && (
             <div style={{ ...styles.card, display: 'grid', gap: '12px' }}>
@@ -2842,6 +2882,54 @@ export const App = () => {
               {dataTransferMessage && <p role="status" style={{ color: '#8de0ad', margin: 0 }}>{dataTransferMessage}</p>}
               <p style={styles.muted}>ZIP files are limited to 4.5 MB to stay below the app request-size constraints. If an export is too large, export smaller datasets separately.</p>
               <button type="button" style={styles.button} onClick={() => void exportDataArchive()} disabled={dataTransferBusy}>{dataTransferBusy ? 'Preparing ZIP...' : 'Download ZIP Export'}</button>
+            </div>
+          )}
+          {adminSectionView === 'data-import' && (
+            <div style={{ ...styles.card, display: 'grid', gap: '14px' }}>
+              <h2 style={{ margin: 0 }}>Import App Data</h2>
+              <p style={styles.muted}>Only ZIP archives exported by Faculty Ratings schema version 1 are accepted. Uploads are limited to 4.5 MB; the archive is validated before any records are changed.</p>
+              <label style={styles.label}>Import Mode</label>
+              <select style={styles.input} value={dataImportMode} onChange={event => { setDataImportMode(event.target.value as typeof dataImportMode); setDataImportPreview(null); }}>
+                <option value="faculty">Faculty Data</option>
+                <option value="faculty-courses">Faculty Course Details Only</option>
+                <option value="courses">Course List</option>
+                <option value="ratings">Faculty Ratings (Anonymous)</option>
+                <option value="all">All Data (Full Replacement)</option>
+              </select>
+              <label style={styles.label}>ZIP Archive</label>
+              <input id="data-import-file" style={styles.input} type="file" accept=".zip,application/zip" onChange={event => { setDataImportFile(event.target.files?.[0] ?? null); setDataImportPreview(null); }} />
+              <button type="button" style={styles.secondaryButton} onClick={() => void previewDataImport()} disabled={dataTransferBusy || !dataImportFile}>{dataTransferBusy ? 'Validating...' : 'Validate & Preview'}</button>
+              {dataImportPreview && (
+                <div style={{ borderTop: '1px solid #56618d', paddingTop: '14px', display: 'grid', gap: '10px' }}>
+                  <h3 style={{ margin: 0 }}>Import Preview</h3>
+                  {Object.entries(dataImportPreview.counts).map(([label, value]) => <p key={label} style={{ margin: 0 }}>{label.replace(/([A-Z])/g, ' $1')}: <strong>{value.toLocaleString()}</strong></p>)}
+                  {dataImportPreview.warnings.map(warning => <p key={warning} style={{ color: '#ffd58a', margin: 0 }}>{warning}</p>)}
+                  {dataImportPreview.missingCourses.length > 0 && (
+                    <div style={{ display: 'grid', gap: '7px' }}>
+                      <strong>Missing courses — selected by default</strong>
+                      <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                        <button type="button" style={styles.secondaryButton} onClick={() => setSelectedImportCourses(dataImportPreview.missingCourses)}>Select All</button>
+                        <button type="button" style={styles.secondaryButton} onClick={() => setSelectedImportCourses([])}>Unselect All</button>
+                      </div>
+                      {dataImportPreview.missingCourses.map(code => <label key={code} style={{ display: 'flex', alignItems: 'center', gap: '8px' }}><input type="checkbox" checked={selectedImportCourses.includes(code)} onChange={event => setSelectedImportCourses(current => event.target.checked ? [...current, code] : current.filter(item => item !== code))} />{code}</label>)}
+                    </div>
+                  )}
+                  {dataImportPreview.ambiguousFacultyIds.length > 0 && <p role="alert" style={{ color: '#ffb3b3' }}>Ambiguous faculty matches must be resolved before import: {dataImportPreview.ambiguousFacultyIds.join(', ')}. The import will be blocked until these are resolved.</p>}
+                  {dataImportMode === 'ratings' && <label style={{ display: 'flex', alignItems: 'center', gap: '8px' }}><input type="checkbox" checked={addMissingRatingFaculty} onChange={event => setAddMissingRatingFaculty(event.target.checked)} /> Add faculty details when no matching destination faculty exists</label>}
+                  {dataImportMode === 'all' && (
+                    <div style={{ border: '1px solid #b83232', borderRadius: '10px', padding: '12px', display: 'grid', gap: '10px' }}>
+                      <strong style={{ color: '#ffaaaa' }}>Full replacement — destructive operation</strong>
+                      <p style={styles.muted}>This replaces faculty, courses, assignments and ratings. A backup is created first. Owner/admin access, security settings and all logs are preserved. Approved admins are permitted to run this operation.</p>
+                      <label style={styles.label}>Type CONFIRM</label>
+                      <input style={styles.input} value={importConfirmation} onChange={event => setImportConfirmation(event.target.value)} placeholder="CONFIRM" />
+                      <label style={{ display: 'flex', alignItems: 'center', gap: '8px' }}><input type="checkbox" checked={finalImportConfirmation} onChange={event => setFinalImportConfirmation(event.target.checked)} /> I understand this replaces the current app data.</label>
+                    </div>
+                  )}
+                  <button type="button" style={{ ...styles.button, backgroundColor: dataImportMode === 'all' ? '#a63838' : '#23834c' }} onClick={() => void applyDataImport()} disabled={dataTransferBusy || dataImportPreview.ambiguousFacultyIds.length > 0 || (dataImportMode === 'all' && (importConfirmation !== 'CONFIRM' || !finalImportConfirmation))}>{dataTransferBusy ? 'Importing...' : dataImportMode === 'all' ? 'Confirm Full Replacement' : 'Import Selected Data'}</button>
+                </div>
+              )}
+              {dataTransferError && <p role="alert" style={{ color: '#ffb3b3', margin: 0 }}>{dataTransferError}</p>}
+              {dataTransferMessage && <p role="status" style={{ color: '#8de0ad', margin: 0 }}>{dataTransferMessage}</p>}
             </div>
           )}
           {adminSectionView === 'admins' && adminRole === 'owner' && (
