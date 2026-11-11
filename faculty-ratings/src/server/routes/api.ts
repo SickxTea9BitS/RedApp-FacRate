@@ -81,7 +81,7 @@ api.use('/mod/*', async (c, next) => {
   const target = normalizedPath.match(/^\/mod\/(faculty|courses|requests|course-requests|faculty-course-requests)\/([^/]+)/);
   let before: unknown = null;
   if (target) {
-    const [collection, id] = target.slice(1);
+    const [collection, id] = target.slice(1) as [string, string];
     const key = collection === 'faculty' ? FACULTY_HASH_KEY
       : collection === 'courses' ? COURSES_HASH_KEY
       : collection === 'requests' ? REQUESTS_HASH_KEY
@@ -96,7 +96,7 @@ api.use('/mod/*', async (c, next) => {
   if (!actorId) return;
   let after: unknown = null;
   if (target) {
-    const [collection, id] = target.slice(1);
+    const [collection, id] = target.slice(1) as [string, string];
     const key = collection === 'faculty' ? FACULTY_HASH_KEY
       : collection === 'courses' ? COURSES_HASH_KEY
       : collection === 'requests' ? REQUESTS_HASH_KEY
