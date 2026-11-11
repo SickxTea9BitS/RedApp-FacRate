@@ -89,7 +89,7 @@ const ensurePermanentFacultyIds = async () => {
 };
 
 const facultyRows = (faculty: Array<{ id: string; record: Faculty }>) =>
-  faculty.map(({ id, record }) => ({
+  faculty.map(({ record }) => ({
     faculty_id: record.facultyId ?? '',
     first_name: record.firstName ?? '',
     middle_name: record.middleName ?? '',
