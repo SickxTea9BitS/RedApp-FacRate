@@ -39,7 +39,7 @@ const REJECTION_REASONS = [
   'Custom',
 ];
 
-type View = 'home' | 'faculty' | 'faculty-detail' | 'request' | 'course-request' | 'admin';
+type View = 'home' | 'faculty' | 'faculty-detail' | 'request' | 'course-request' | 'admin' | 'admin-console';
 type RatingMode = 'check' | 'rate';
 
 const styles = {
@@ -161,6 +161,20 @@ export const App = () => {
 
 
   const [isModerator, setIsModerator] = useState(false);
+  const [adminRole, setAdminRole] = useState<'owner' | 'admin' | 'none'>('none');
+  const [adminSectionView, setAdminSectionView] = useState<'overview' | 'admins' | 'moderator-logs' | 'admin-logs' | 'security-logs'>('overview');
+  const [adminUsers, setAdminUsers] = useState<Array<{ id: string; username: string; addedAt: number }>>([]);
+  const [pendingAdminRemoval, setPendingAdminRemoval] = useState<{ id: string; username: string } | null>(null);
+  const [adminLogs, setAdminLogs] = useState<Array<{ id: string; actorUsername: string; action: string; timestamp: number; details: Record<string, unknown>; result: string }>>([]);
+  const [adminLogPage, setAdminLogPage] = useState(1);
+  const [adminLogTotal, setAdminLogTotal] = useState(0);
+  const [adminTargetId, setAdminTargetId] = useState('');
+  const [adminTargetUsername, setAdminTargetUsername] = useState('');
+  const [adminMessage, setAdminMessage] = useState('');
+  const [adminError, setAdminError] = useState('');
+  const [adminBusy, setAdminBusy] = useState(false);
+  const [adminConfirmText, setAdminConfirmText] = useState('');
+  const [adminStatus, setAdminStatus] = useState<{ moderatorLogCount: number; adminLogCount: number; showLogWarning: boolean }>({ moderatorLogCount: 0, adminLogCount: 0, showLogWarning: false });
   const [moderatorCheckLoading, setModeratorCheckLoading] = useState(true);
   const [moderatorRequests, setModeratorRequests] = useState<FacultyRequest[]>(
     []
@@ -248,6 +262,22 @@ export const App = () => {
 
 
 
+
+  useEffect(() => {
+    let active = true;
+    const checkAdmin = async () => {
+      try {
+        const response = await fetch('/api/admin/status');
+        const result = await response.json() as { status: string; role?: 'owner' | 'admin' | 'none'; moderatorLogCount?: number; adminLogCount?: number; showLogWarning?: boolean };
+        if (active && response.ok && result.status === 'success') {
+          setAdminRole(result.role ?? 'none');
+          setAdminStatus({ moderatorLogCount: result.moderatorLogCount ?? 0, adminLogCount: result.adminLogCount ?? 0, showLogWarning: Boolean(result.showLogWarning) });
+        }
+      } catch { if (active) setAdminRole('none'); }
+    };
+    void checkAdmin();
+    return () => { active = false; };
+  }, []);
 
   useEffect(() => {
     let active = true;
@@ -856,6 +886,94 @@ export const App = () => {
     }
   };
 
+  const openAdminConsole = () => {
+    setAdminSectionView('overview');
+    setAdminMessage('');
+    setAdminError('');
+    setCurrentView('admin-console');
+    void refreshAdminStatus();
+  };
+
+  const refreshAdminStatus = async () => {
+    try {
+      const response = await fetch('/api/admin/status');
+      const result = await response.json();
+      if (!response.ok || result.status !== 'success') throw new Error(result.message || 'Unable to load admin status.');
+      setAdminRole(result.role ?? 'none');
+      setAdminStatus({ moderatorLogCount: result.moderatorLogCount ?? 0, adminLogCount: result.adminLogCount ?? 0, showLogWarning: Boolean(result.showLogWarning) });
+    } catch (error) {
+      setAdminError(error instanceof Error ? error.message : 'Unable to load admin status.');
+    }
+  };
+
+  const loadAdminUsers = async () => {
+    setAdminBusy(true); setAdminError(''); setAdminMessage('');
+    try {
+      const response = await fetch('/api/admin/admins');
+      const result = await response.json();
+      if (!response.ok || result.status !== 'success') throw new Error(result.message || 'Unable to load admins.');
+      setAdminUsers(result.admins);
+    } catch (error) { setAdminError(error instanceof Error ? error.message : 'Unable to load admins.'); }
+    finally { setAdminBusy(false); }
+  };
+
+  const loadAdminLogs = async (kind: 'moderator' | 'admin' | 'security', page = 1) => {
+    setAdminBusy(true); setAdminError(''); setAdminMessage('');
+    try {
+      const response = await fetch('/api/admin/logs/' + kind + '?page=' + page + '&pageSize=50');
+      const result = await response.json();
+      if (!response.ok || result.status !== 'success') throw new Error(result.message || 'Unable to load logs.');
+      setAdminLogs(result.entries); setAdminLogPage(result.page); setAdminLogTotal(result.total);
+    } catch (error) { setAdminError(error instanceof Error ? error.message : 'Unable to load logs.'); }
+    finally { setAdminBusy(false); }
+  };
+
+  const addAdminUser = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault(); setAdminBusy(true); setAdminError(''); setAdminMessage('');
+    try {
+      const response = await fetch('/api/admin/admins/add', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ redditUserId: adminTargetId, username: adminTargetUsername }) });
+      const result = await response.json();
+      if (!response.ok || result.status !== 'success') throw new Error(result.message || 'Unable to add admin.');
+      setAdminTargetId(''); setAdminTargetUsername(''); setAdminMessage(result.message); await loadAdminUsers(); await refreshAdminStatus();
+    } catch (error) { setAdminError(error instanceof Error ? error.message : 'Unable to add admin.'); }
+    finally { setAdminBusy(false); }
+  };
+
+  const removeAdminUser = async (redditUserId: string) => {
+    setAdminBusy(true); setAdminError(''); setAdminMessage('');
+    try {
+      const response = await fetch('/api/admin/admins/remove', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ redditUserId }) });
+      const result = await response.json();
+      if (!response.ok || result.status !== 'success') throw new Error(result.message || 'Unable to remove admin.');
+      setPendingAdminRemoval(null);
+      setAdminMessage(result.message); await loadAdminUsers(); await refreshAdminStatus();
+    } catch (error) { setAdminError(error instanceof Error ? error.message : 'Unable to remove admin.'); }
+    finally { setAdminBusy(false); }
+  };
+
+  const clearAdminLogs = async () => {
+    setAdminBusy(true); setAdminError(''); setAdminMessage('');
+    try {
+      const response = await fetch('/api/admin/logs/clear', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ confirmation: adminConfirmText }) });
+      const result = await response.json();
+      if (!response.ok || result.status !== 'success') throw new Error(result.message || 'Unable to clear logs.');
+      setAdminConfirmText(''); setAdminMessage(result.message); await refreshAdminStatus();
+      if (adminSectionView === 'moderator-logs') await loadAdminLogs('moderator');
+      if (adminSectionView === 'admin-logs') await loadAdminLogs('admin');
+    } catch (error) { setAdminError(error instanceof Error ? error.message : 'Unable to clear logs.'); }
+    finally { setAdminBusy(false); }
+  };
+
+  const exportAdminLogs = async () => {
+    try {
+      const response = await fetch('/api/admin/logs/export');
+      if (!response.ok) { const result = await response.json(); throw new Error(result.message || 'Unable to export logs.'); }
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a'); link.href = url; link.download = 'faculty-ratings-logs.json'; link.click(); URL.revokeObjectURL(url);
+    } catch (error) { setAdminError(error instanceof Error ? error.message : 'Unable to export logs.'); }
+  };
+
   const openAdminDashboard = () => {
     setAdminSection('menu');
     setFacultyAdminSearch('');
@@ -1112,15 +1230,23 @@ export const App = () => {
             </div>
 
             {!moderatorCheckLoading && isModerator && (
-              <div style={{ marginTop: '42px' }}>
+              <div style={{ marginTop: '18px' }}>
                 <button
-                  style={{
-                    ...styles.button,
-                    backgroundColor: '#d04422',
-                  }}
+                  style={{ ...styles.button, backgroundColor: '#5265a5' }}
                   onClick={openAdminDashboard}
                 >
                   ⚙ Moderator Dashboard
+                </button>
+              </div>
+            )}
+
+            {adminRole !== 'none' && (
+              <div style={{ marginTop: '42px' }}>
+                <button
+                  style={{ ...styles.button, backgroundColor: '#d04422' }}
+                  onClick={openAdminConsole}
+                >
+                  🛡 Admin Dashboard
                 </button>
               </div>
             )}
@@ -2637,6 +2763,100 @@ export const App = () => {
           </section>
         )}
       </main>
+      {currentView === 'admin-console' && (
+        <section className="app-screen app-screen-admin" style={{ display: 'grid', gap: '16px' }}>
+          <button onClick={goHome} style={{ ...styles.secondaryButton, justifySelf: 'start' }}>← Back to Home</button>
+          <h1 style={{ ...styles.title, marginBottom: 0 }}>Admin Dashboard</h1>
+          <p style={styles.subtitle}>Owner and approved-admin controls. Protected security audit records are owner-only.</p>
+          {adminError && <p role="alert" style={{ color: '#ffb3b3' }}>{adminError}</p>}
+          {adminMessage && <p role="status" style={{ color: '#8de0ad' }}>{adminMessage}</p>}
+          {adminStatus.showLogWarning && adminRole === 'owner' && (
+            <div role="alert" style={{ ...styles.card, border: '1px solid #d89a37', color: '#ffd58a' }}>
+              <strong>Log storage warning</strong>
+              <p>At least one log has reached 5,000 entries. Export the logs and clear the normal logs when appropriate. The protected security audit log is not cleared.</p>
+            </div>
+          )}
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+            <button style={styles.secondaryButton} onClick={() => { setAdminSectionView('overview'); void refreshAdminStatus(); }}>Overview</button>
+            {adminRole === 'owner' && <button style={styles.secondaryButton} onClick={() => { setAdminSectionView('admins'); void loadAdminUsers(); }}>Manage Admins</button>}
+            <button style={styles.secondaryButton} onClick={() => { setAdminSectionView('moderator-logs'); void loadAdminLogs('moderator'); }}>Moderator Logs</button>
+            <button style={styles.secondaryButton} onClick={() => { setAdminSectionView('admin-logs'); void loadAdminLogs('admin'); }}>Admin Logs</button>
+            {adminRole === 'owner' && <button style={styles.secondaryButton} onClick={() => { setAdminSectionView('security-logs'); void loadAdminLogs('security'); }}>Security Audit</button>}
+          </div>
+          {adminSectionView === 'overview' && (
+            <div style={{ ...styles.card, display: 'grid', gap: '12px' }}>
+              <h2 style={{ margin: 0 }}>Log overview</h2>
+              <p style={{ margin: 0 }}>Moderator logs: {adminStatus.moderatorLogCount.toLocaleString()}</p>
+              <p style={{ margin: 0 }}>Admin logs: {adminStatus.adminLogCount.toLocaleString()}</p>
+              <p style={styles.muted}>Logs are retained until the owner clears them. The security audit log is retained separately and is never removed by normal log clearing.</p>
+              {adminRole === 'owner' && <button style={styles.secondaryButton} onClick={() => void exportAdminLogs()}>Export Logs (JSON)</button>}
+            </div>
+          )}
+          {adminSectionView === 'admins' && adminRole === 'owner' && (
+            <div style={{ display: 'grid', gap: '12px' }}>
+              <form onSubmit={addAdminUser} style={{ ...styles.card, display: 'grid', gap: '10px' }}>
+                <h2 style={{ margin: 0 }}>Add Approved Admin</h2>
+                <label style={styles.label}>Reddit User ID</label><input style={styles.input} value={adminTargetId} onChange={e => setAdminTargetId(e.target.value)} placeholder="Reddit user ID" required />
+                <label style={styles.label}>Reddit Username</label><input style={styles.input} value={adminTargetUsername} onChange={e => setAdminTargetUsername(e.target.value)} placeholder="username" required />
+                <button style={styles.button} type="submit" disabled={adminBusy}>Add Admin</button>
+              </form>
+              <div style={{ display: 'grid', gap: '8px' }}>
+                {adminUsers.map(user => <article key={user.id} style={{ ...styles.card, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '10px' }}><div><strong>u/{user.username}</strong><p style={styles.muted}>{user.id}</p></div><button style={{ ...styles.secondaryButton, borderColor: '#d04444', color: '#ff9999' }} disabled={adminBusy} onClick={() => setPendingAdminRemoval({ id: user.id, username: user.username })}>Remove</button></article>)}
+                {!adminBusy && adminUsers.length === 0 && <p style={styles.muted}>No additional admins have been approved.</p>}
+              </div>
+            </div>
+          )}
+          {(adminSectionView === 'moderator-logs' || adminSectionView === 'admin-logs' || adminSectionView === 'security-logs') && (
+            <div style={{ display: 'grid', gap: '10px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '10px' }}>
+                <h2 style={{ margin: 0 }}>{adminSectionView === 'moderator-logs' ? 'Moderator Logs' : adminSectionView === 'admin-logs' ? 'Admin Logs' : 'Protected Security Audit'}</h2>
+                <span style={styles.muted}>{adminLogTotal.toLocaleString()} entries</span>
+              </div>
+              {adminLogs.map(entry => <article key={entry.id} style={{ ...styles.card, display: 'grid', gap: '5px' }}><strong>{entry.action}</strong><span style={styles.muted}>u/{entry.actorUsername} · {formatDate(entry.timestamp)} · {entry.result}</span><pre style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', margin: 0, fontSize: '0.82rem' }}>{JSON.stringify(entry.details, null, 2)}</pre></article>)}
+              <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                <button style={styles.secondaryButton} disabled={adminBusy || adminLogPage <= 1} onClick={() => void loadAdminLogs(adminSectionView === 'moderator-logs' ? 'moderator' : adminSectionView === 'admin-logs' ? 'admin' : 'security', adminLogPage - 1)}>Previous</button>
+                <span style={styles.muted}>Page {adminLogPage} / {Math.max(1, Math.ceil(adminLogTotal / 50))}</span>
+                <button style={styles.secondaryButton} disabled={adminBusy || adminLogPage * 50 >= adminLogTotal} onClick={() => void loadAdminLogs(adminSectionView === 'moderator-logs' ? 'moderator' : adminSectionView === 'admin-logs' ? 'admin' : 'security', adminLogPage + 1)}>Next</button>
+              </div>
+              {adminRole === 'owner' && adminSectionView !== 'security-logs' && (
+                <div style={{ ...styles.card, display: 'grid', gap: '8px' }}>
+                  <strong>Clear normal logs</strong>
+                  <p style={styles.muted}>This clears moderator and admin logs only. The protected security audit log remains intact.</p>
+                  <input style={styles.input} value={adminConfirmText} onChange={e => setAdminConfirmText(e.target.value)} placeholder="Type CONFIRM" />
+                  <button style={{ ...styles.button, backgroundColor: '#a63838' }} disabled={adminBusy || adminConfirmText !== 'CONFIRM'} onClick={() => void clearAdminLogs()}>Clear Logs</button>
+                  <button style={styles.secondaryButton} onClick={() => void exportAdminLogs()}>Export Logs (JSON)</button>
+                </div>
+              )}
+            </div>
+          )}
+        </section>
+      )}
+
+      {pendingAdminRemoval && (
+        <div
+          role="presentation"
+          onClick={() => setPendingAdminRemoval(null)}
+          style={{ position: 'fixed', inset: 0, zIndex: 1100, display: 'grid', placeItems: 'center', padding: '20px', background: 'rgba(0, 0, 0, 0.72)' }}
+        >
+          <section
+            role="alertdialog"
+            aria-modal="true"
+            aria-labelledby="admin-remove-confirmation-title"
+            onClick={(event) => event.stopPropagation()}
+            style={{ width: 'min(100%, 440px)', display: 'grid', gap: '16px', padding: '22px', border: '1px solid #6575a8', borderRadius: '16px', background: '#202747', color: '#fff', boxShadow: '0 20px 60px rgba(0,0,0,.45)' }}
+          >
+            <h2 id="admin-remove-confirmation-title" style={{ margin: 0 }}>Remove approved admin?</h2>
+            <p style={{ margin: 0, lineHeight: 1.55 }}>u/{pendingAdminRemoval.username} will immediately lose Admin Dashboard access. This does not affect their subreddit moderator permissions.</p>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', flexWrap: 'wrap' }}>
+              <button type="button" style={styles.secondaryButton} onClick={() => setPendingAdminRemoval(null)} disabled={adminBusy}>Cancel</button>
+              <button type="button" style={{ ...styles.button, backgroundColor: '#b83232' }} onClick={() => void removeAdminUser(pendingAdminRemoval.id)} disabled={adminBusy}>
+                {adminBusy ? 'Removing...' : 'Remove Admin'}
+              </button>
+            </div>
+          </section>
+        </div>
+      )}
+
       {pendingDelete && (
         <div
           role="presentation"

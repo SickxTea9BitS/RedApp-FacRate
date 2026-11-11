@@ -27,6 +27,101 @@ const REQUESTS_HASH_KEY = 'faculty:requests';
 const COURSES_HASH_KEY = 'courses:records';
 const COURSE_REQUESTS_HASH_KEY = 'courses:requests';
 const FACULTY_COURSE_TAG_REQUESTS_HASH_KEY = 'faculty:course-tag-requests';
+const OWNER_REDDIT_ID = '135m5v7osr';
+const ADMIN_USERS_KEY = 'admin:users';
+const MOD_LOG_KEY = 'logs:moderator';
+
+const normalizeRedditId = (value: string) => value.replace(/^t2_/, '').trim();
+
+const nextFacultyId = async () => {
+  const sequence = await redis.incrBy('faculty:id-counter', 1);
+  return 'VITBFAC' + String(sequence).padStart(4, '0');
+};
+
+const ensureFacultyIds = async () => {
+  const records = await redis.hGetAll(FACULTY_HASH_KEY);
+  for (const [id, value] of Object.entries(records)) {
+    try {
+      const record = JSON.parse(value) as FacultyRecord;
+      if (!record.facultyId) {
+        const facultyId = await nextFacultyId();
+        await redis.hSet(FACULTY_HASH_KEY, { [id]: JSON.stringify({ ...record, facultyId }) });
+      }
+    } catch {
+      continue;
+    }
+  }
+};
+
+const hasAdminAccess = async () => {
+  const userId = context.userId;
+  if (!userId) return false;
+  const normalizedId = normalizeRedditId(userId);
+  if (normalizedId === OWNER_REDDIT_ID) return true;
+
+  const stored = await redis.hGet(ADMIN_USERS_KEY, normalizedId);
+  if (!stored) return false;
+
+  try {
+    const record = JSON.parse(stored) as { active?: boolean };
+    // Older admin records did not have an active field, so treat those as active.
+    return record.active !== false;
+  } catch {
+    // Invalid records must never grant moderator access.
+    return false;
+  }
+};
+
+api.use('/mod/*', async (c, next) => {
+  if (c.req.method === 'GET') return next();
+  const actorId = context.userId ? normalizeRedditId(context.userId) : '';
+  const actorUsername = (await reddit.getCurrentUsername()) ?? 'unknown';
+  const requestBody = await c.req.raw.clone().text().catch(() => '');
+  const normalizedPath = c.req.path.replace(/^\/api/, '');
+  const target = normalizedPath.match(/^\/mod\/(faculty|courses|requests|course-requests|faculty-course-requests)\/([^/]+)/);
+  let before: unknown = null;
+  if (target) {
+    const [collection, id] = target.slice(1);
+    const key = collection === 'faculty' ? FACULTY_HASH_KEY
+      : collection === 'courses' ? COURSES_HASH_KEY
+      : collection === 'requests' ? REQUESTS_HASH_KEY
+      : collection === 'course-requests' ? COURSE_REQUESTS_HASH_KEY
+      : FACULTY_COURSE_TAG_REQUESTS_HASH_KEY;
+    before = await redis.hGet(key, id).catch(() => null);
+    if (typeof before === 'string') {
+      try { before = JSON.parse(before); } catch { /* Keep malformed source text for the audit record. */ }
+    }
+  }
+  await next();
+  if (!actorId) return;
+  let after: unknown = null;
+  if (target) {
+    const [collection, id] = target.slice(1);
+    const key = collection === 'faculty' ? FACULTY_HASH_KEY
+      : collection === 'courses' ? COURSES_HASH_KEY
+      : collection === 'requests' ? REQUESTS_HASH_KEY
+      : collection === 'course-requests' ? COURSE_REQUESTS_HASH_KEY
+      : FACULTY_COURSE_TAG_REQUESTS_HASH_KEY;
+    after = await redis.hGet(key, id).catch(() => null);
+    if (typeof after === 'string') {
+      try { after = JSON.parse(after); } catch { /* Keep malformed source text for the audit record. */ }
+    }
+  }
+  let parsedRequest: unknown = requestBody.slice(0, 4000);
+  try { parsedRequest = requestBody ? JSON.parse(requestBody) : null; } catch { /* Keep raw request text. */ }
+  const entry = {
+    id: randomUUID(), actorId, actorUsername,
+    action: c.req.method.toLowerCase() + ' ' + normalizedPath,
+    timestamp: Date.now(),
+    details: { path: normalizedPath, method: c.req.method, request: parsedRequest, before, after },
+    result: c.res.status < 400 ? 'success' : 'failure',
+  };
+  try {
+    await redis.zAdd(MOD_LOG_KEY, { member: JSON.stringify(entry), score: entry.timestamp });
+  } catch (error) {
+    console.error('Moderator audit log write failed:', error);
+  }
+});
 const COURSE_CODE_PATTERN = /^[A-Z]{3}[0-9]{4}$/;
 
 const VALID_SCHOOLS = [
@@ -67,6 +162,8 @@ const getModerator = async () => {
       return null;
     }
 
+    if (await hasAdminAccess()) return user;
+
     const subreddit = await reddit.getCurrentSubreddit();
     const permissions = await user.getModPermissionsForSubreddit(
       subreddit.name
@@ -99,6 +196,7 @@ api.get('/faculty', async (c) => {
       );
     }
 
+    await ensureFacultyIds();
     const storedRecords = await redis.hGetAll(FACULTY_HASH_KEY);
 
     const currentUserId = context.userId;
@@ -146,10 +244,22 @@ api.get('/faculty', async (c) => {
       })
     );
 
+    const publicFaculty: FacultyRecord[] = faculty.map((record) => ({
+      id: record.id,
+      firstName: record.firstName,
+      middleName: record.middleName,
+      lastName: record.lastName,
+      school: record.school,
+      courseCodes: record.courseCodes,
+      createdAt: record.createdAt,
+      ratingCount: record.ratingCount,
+      hasRated: record.hasRated,
+    }));
+
     return c.json<FacultyListResponse>({
       status: 'success',
-      faculty,
-      total: faculty.length,
+      faculty: publicFaculty,
+      total: publicFaculty.length,
     });
   } catch (error) {
     console.error('Faculty list error:', error);
@@ -663,7 +773,7 @@ api.post('/mod/faculty', async (c) => {
     const courses = await redis.hGetAll(COURSES_HASH_KEY);
     for (const code of courseCodes) if (!Object.prototype.hasOwnProperty.call(courses, code)) return c.json<ApiErrorResponse>({ status: 'error', message: code + ' is not an approved course.' }, 400);
     const id = randomUUID();
-    const record: FacultyRecord = { id, firstName, middleName, lastName, school, courseCodes, createdAt: Date.now() };
+    const record: FacultyRecord = { id, facultyId: await nextFacultyId(), firstName, middleName, lastName, school, courseCodes, createdAt: Date.now() };
     const allFaculty = await redis.hGetAll(FACULTY_HASH_KEY);
     const duplicate = Object.values(allFaculty).some((value) => {
       try { const existing = JSON.parse(value) as FacultyRecord; return existing.school === school && normalizeName(getFullName(existing)) === normalizeName(getFullName(record)); } catch { return false; }
