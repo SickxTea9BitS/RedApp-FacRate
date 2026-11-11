@@ -1,5 +1,6 @@
 export type FacultyRecord = {
   id: string;
+  facultyId?: string;
   firstName: string;
   middleName: string;
   lastName: string;
