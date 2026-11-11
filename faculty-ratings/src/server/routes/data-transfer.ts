@@ -121,18 +121,18 @@ dataTransfer.get('/export', async (c) => {
 
     if (dataset === 'faculty' || dataset === 'faculty-courses' || dataset === 'all' || dataset === 'ratings') {
       const rows = facultyRows(faculty);
-      files['faculties.csv'] = toCsv(rows);
+      files['faculties.csv'] = toCsv(rows, ['faculty_id', 'first_name', 'middle_name', 'last_name', 'school']);
       counts.faculties = rows.length;
     }
 
     if (dataset === 'courses' || dataset === 'all' || dataset === 'faculty-courses' || (dataset === 'faculty' && includeAssignments)) {
-      files['courses.csv'] = toCsv(courses);
+      files['courses.csv'] = toCsv(courses, ['course_code']);
       counts.courses = courses.length;
     }
 
     if (dataset === 'faculty-courses' || dataset === 'all' || (dataset === 'faculty' && includeAssignments)) {
       const rows = assignmentRows(faculty);
-      files['faculty_course_assignments.csv'] = toCsv(rows);
+      files['faculty_course_assignments.csv'] = toCsv(rows, ['faculty_id', 'course_code']);
       counts.assignments = rows.length;
     }
 
@@ -167,7 +167,7 @@ dataTransfer.get('/export', async (c) => {
           }
         }
       }
-      files['ratings.csv'] = toCsv(ratingRows);
+      files['ratings.csv'] = toCsv(ratingRows, ['faculty_id', 'teaching', 'internal_marking', 'exam_evaluation', 'overall_recommendation', 'class_average', 'question_provision', 'created_at']);
       counts.ratings = ratingRows.length;
     }
 
@@ -255,6 +255,20 @@ const readImportArchive = async (form: FormData) => {
   for (const name of required[mode]) if (!(name in files)) throw new Error('The archive is missing ' + name + '.');
   const metadata = JSON.parse(files['metadata.json'] ?? 'null') as { schemaVersion?: number } | null;
   if (!metadata || metadata.schemaVersion !== 1) throw new Error('The export metadata is missing or unsupported.');
+  const requireHeaders = (name: string, expected: string[]) => {
+    const header = (files[name] ?? '').split(/\\r?\\n/, 1)[0].split(',').map(value => value.trim());
+    if (header.length !== expected.length || expected.some((value, index) => header[index] !== value)) {
+      throw new Error(name + ' has missing, unexpected, or incorrectly ordered columns.');
+    }
+  };
+  const headerRequirements: Partial<Record<ImportMode, Array<[string, string[]]>>> = {
+    faculty: [['faculties.csv', ['faculty_id', 'first_name', 'middle_name', 'last_name', 'school']]],
+    'faculty-courses': [['faculties.csv', ['faculty_id', 'first_name', 'middle_name', 'last_name', 'school']], ['faculty_course_assignments.csv', ['faculty_id', 'course_code']]],
+    courses: [['courses.csv', ['course_code']]],
+    ratings: [['faculties.csv', ['faculty_id', 'first_name', 'middle_name', 'last_name', 'school']], ['ratings.csv', ['faculty_id', 'teaching', 'internal_marking', 'exam_evaluation', 'overall_recommendation', 'class_average', 'question_provision', 'created_at']]],
+    all: [['faculties.csv', ['faculty_id', 'first_name', 'middle_name', 'last_name', 'school']], ['courses.csv', ['course_code']], ['faculty_course_assignments.csv', ['faculty_id', 'course_code']], ['ratings.csv', ['faculty_id', 'teaching', 'internal_marking', 'exam_evaluation', 'overall_recommendation', 'class_average', 'question_provision', 'created_at']]],
+  };
+  for (const [name, headers] of headerRequirements[mode] ?? []) requireHeaders(name, headers);
   const rows = {
     faculties: files['faculties.csv'] === undefined ? [] : parseCsv(files['faculties.csv']),
     courses: files['courses.csv'] === undefined ? [] : parseCsv(files['courses.csv']),
@@ -266,6 +280,10 @@ const readImportArchive = async (form: FormData) => {
   if (rows.courses.some(row => !/^[A-Z]{3}[0-9]{4}$/.test((row.course_code ?? '').trim().toUpperCase()))) throw new Error('One or more course codes are invalid. Expected format: XXX0000.');
   const sourceFacultyIds = new Set(rows.faculties.map(row => row.faculty_id).filter(Boolean));
   if (rows.faculties.some(row => !row.faculty_id || !/^VITBFAC[0-9]{4,}$/.test(row.faculty_id))) throw new Error('Every faculty row must have a valid permanent faculty ID.');
+  const sourceCourseCodes = new Set(rows.courses.map(row => row.course_code.trim().toUpperCase()));
+  if (rows.assignments.some(row => !sourceCourseCodes.has(row.course_code.trim().toUpperCase()))) {
+    throw new Error('Every faculty course assignment must reference a course included in courses.csv.');
+  }
   if (rows.assignments.some(row => !sourceFacultyIds.has(row.faculty_id) || !/^[A-Z]{3}[0-9]{4}$/.test((row.course_code ?? '').trim().toUpperCase()))) {
     throw new Error('Faculty course assignments contain an unknown faculty ID or invalid course code.');
   }
