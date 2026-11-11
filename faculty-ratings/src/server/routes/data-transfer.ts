@@ -72,6 +72,19 @@ const parseHash = <T,>(stored: Record<string, string>) =>
     }
   });
 
+const ensurePermanentFacultyIds = async () => {
+  const stored = await redis.hGetAll(FACULTY_KEY);
+  for (const [id, value] of Object.entries(stored)) {
+    try {
+      const record = JSON.parse(value) as Faculty;
+      if (!record.facultyId) {
+        const sequence = await redis.incrBy('faculty:id-counter', 1);
+        await redis.hSet(FACULTY_KEY, { [id]: JSON.stringify({ ...record, facultyId: 'VITBFAC' + String(sequence).padStart(4, '0') }) });
+      }
+    } catch { /* Preserve malformed legacy data for moderators to repair. */ }
+  }
+};
+
 const facultyRows = (faculty: Array<{ id: string; record: Faculty }>) =>
   faculty.map(({ id, record }) => ({
     faculty_id: record.facultyId ?? '',
@@ -102,15 +115,7 @@ dataTransfer.get('/export', async (c) => {
       redis.hGetAll(FACULTY_KEY),
       redis.hGetAll(COURSES_KEY),
     ]);
-    for (const [id, value] of Object.entries(storedFaculty)) {
-      try {
-        const record = JSON.parse(value) as Faculty;
-        if (!record.facultyId) {
-          const sequence = await redis.incrBy('faculty:id-counter', 1);
-          await redis.hSet(FACULTY_KEY, { [id]: JSON.stringify({ ...record, facultyId: 'VITBFAC' + String(sequence).padStart(4, '0') }) });
-        }
-      } catch { /* Skip malformed legacy faculty records in exports. */ }
-    }
+    await ensurePermanentFacultyIds();
     const refreshedFaculty = await redis.hGetAll(FACULTY_KEY);
     const faculty = parseHash<Faculty>(refreshedFaculty);
     const courses = parseHash<{ code?: string }>(storedCourses)
@@ -300,6 +305,7 @@ dataTransfer.post('/import/preview', async (c) => {
   if (!actor) return c.json({ status: 'error', message: 'Approved admin access is required.' }, 403);
   try {
     const { mode, rows } = await readImportArchive(await c.req.formData());
+    await ensurePermanentFacultyIds();
     const [storedFaculty, storedCourses] = await Promise.all([redis.hGetAll(FACULTY_KEY), redis.hGetAll(COURSES_KEY)]);
     const existingFaculty = parseHash<Faculty>(storedFaculty).map(({ id, record }) => ({ id, record }));
     const existingCourses = new Set(Object.keys(storedCourses));
@@ -328,6 +334,7 @@ dataTransfer.post('/import/preview', async (c) => {
         ratingsInFile: rows.ratings.length,
         existingFaculties: existingFaculty.length,
         existingCourses: existingCourses.size,
+        existingRatings: (await Promise.all(existingFaculty.map(item => redis.hGetAll(RATINGS_PREFIX + item.id)))).reduce((total, ratings) => total + Object.keys(ratings).length, 0),
         newFaculties: matches.filter(item => item.match === 'new').length,
         matchedByFacultyId: matches.filter(item => item.match === 'faculty-id').length,
         matchedByIdentity: matches.filter(item => item.match === 'identity').length,
@@ -490,6 +497,7 @@ dataTransfer.post('/import/apply', async (c) => {
     if (!(upload instanceof File)) throw new Error('Choose the validated ZIP file again to continue.');
     const { mode: parsedMode, rows } = await readImportArchive(form);
     mode = parsedMode;
+    await ensurePermanentFacultyIds();
     const selectedCourses = new Set(
       Array.isArray(options.selectedCourses)
         ? options.selectedCourses.filter((value): value is string => typeof value === 'string' && /^[A-Z]{3}[0-9]{4}$/.test(value))
