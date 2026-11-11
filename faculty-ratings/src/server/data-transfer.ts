@@ -34,12 +34,15 @@ export const createZip = (files: Record<string, string>) => {
   const localParts: Buffer[] = [];
   const centralParts: Buffer[] = [];
   let offset = 0;
+  let totalUncompressed = 0;
   const timestamp = dosDateTime(new Date());
 
   for (const [name, content] of Object.entries(files)) {
     if (!/^[a-zA-Z0-9._-]+$/.test(name) || name.startsWith('.')) throw new Error('Invalid archive filename.');
     const nameBytes = encoder.encode(name);
     const raw = Buffer.from(encoder.encode(content));
+    totalUncompressed += raw.length;
+    if (totalUncompressed > MAX_UNCOMPRESSED_BYTES) throw new Error('The export exceeds the 12 MB uncompressed data limit. Export fewer datasets.');
     const compressed = deflateRawSync(raw);
     const checksum = crc32(raw);
     const local = Buffer.alloc(30 + nameBytes.length);
