@@ -471,7 +471,7 @@ const sourceFacultyMap = async (
     }
 
     if (!addMissing) continue;
-    const permanentId = preserveSourceIds && /^VITBFAC[0-9]{4,}$/.test(row.faculty_id) && !usedIds.has(row.faculty_id)
+    const permanentId = preserveSourceIds && /^VITBFAC[0-9]{4,15}$/.test(row.faculty_id) && !usedIds.has(row.faculty_id)
       ? (usedIds.add(row.faculty_id), row.faculty_id)
       : await createPermanentFacultyId(usedIds);
     const key = randomUUID();
