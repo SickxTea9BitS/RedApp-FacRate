@@ -283,7 +283,7 @@ dataTransfer.post('/import/preview', async (c) => {
     const matches = rows.faculties.map(source => {
       const byId = facultyById.get(source.faculty_id);
       const byIdentity = identities.get(identityKey(source)) ?? [];
-      return { sourceId: source.faculty_id, match: byId ? 'faculty-id' : byIdentity.length === 1 ? 'identity' : byIdentity.length > 1 ? 'ambiguous' : 'new' };
+      return { sourceId: source.faculty_id, match: byId ? 'faculty-id' : byIdentity.length === 1 ? 'identity' : byIdentity.length > 1 ? 'ambiguous' : 'new', candidates: byIdentity.map(item => ({ facultyId: item.record.facultyId ?? '', name: [item.record.firstName, item.record.middleName, item.record.lastName].filter(Boolean).join(' '), school: item.record.school })) };
     });
     const missingCourses = Array.from(new Set([
       ...rows.courses.map(row => row.course_code.trim().toUpperCase()),
@@ -307,6 +307,7 @@ dataTransfer.post('/import/preview', async (c) => {
       },
       missingCourses,
       ambiguousFacultyIds: matches.filter(item => item.match === 'ambiguous').map(item => item.sourceId),
+      ambiguousFacultyMatches: matches.filter(item => item.match === 'ambiguous'),
       warnings: mode === 'all' ? [
         'This operation replaces faculty, courses, assignments, and ratings in this subreddit.',
         'Approved admins may perform this operation. A full backup is created before replacement.',
@@ -371,6 +372,16 @@ const sourceFacultyMap = async (
     byIdentity.set(key, [...(byIdentity.get(key) ?? []), item]);
   }
   const usedIds = new Set(existing.map(item => item.record.facultyId).filter((id): id is string => Boolean(id)));
+  for (const row of rows) {
+    if (byId.has(row.faculty_id)) continue;
+    const candidates = byIdentity.get(identityKey(row)) ?? [];
+    if (candidates.length > 1) {
+      const resolved = resolutions[row.faculty_id];
+      if (!resolved || !candidates.some(item => item.record.facultyId === resolved)) {
+        throw new Error('Faculty ' + row.faculty_id + ' has multiple possible matches. Choose one of the listed destination faculty records.');
+      }
+    }
+  }
   const assignmentsBySource = new Map<string, string[]>();
   for (const row of assignmentRows) assignmentsBySource.set(row.faculty_id, [...(assignmentsBySource.get(row.faculty_id) ?? []), row.course_code.trim().toUpperCase()]);
   const mapping = new Map<string, string>();
@@ -384,7 +395,7 @@ const sourceFacultyMap = async (
       if (identityMatches.length === 1) target = identityMatches[0];
       else if (identityMatches.length > 1) {
         const resolvedFacultyId = resolutions[row.faculty_id];
-        if (resolvedFacultyId) target = existing.find(item => item.record.facultyId === resolvedFacultyId);
+        if (resolvedFacultyId) target = identityMatches.find(item => item.record.facultyId === resolvedFacultyId);
         if (!target) throw new Error('Faculty ' + row.faculty_id + ' has multiple possible matches. Resolve the ambiguity before importing.');
       }
     }
@@ -546,11 +557,11 @@ dataTransfer.post('/import/apply', async (c) => {
       if (currentCourses[code] || !selectedCourses.has(code)) continue;
       newCourses[code] = JSON.stringify({ id: code, code, createdAt: Date.now(), createdByUsername: actor.username, approvedAt: Date.now(), approvedByUsername: actor.username });
     }
-    await setHashInBatches(COURSES_KEY, newCourses);
     const availableCodes = new Set([...Object.keys(currentCourses), ...Object.keys(newCourses)]);
     const assignments = rows.assignments.filter(row => availableCodes.has(row.course_code.trim().toUpperCase()));
     const addMissingFaculty = mode === 'faculty' || mode === 'ratings' && options.addMissingFaculty === true;
     const { mapping, added, matched } = await sourceFacultyMap(rows.faculties, addMissingFaculty, resolutions, availableCodes, assignments, mode === 'faculty' && Object.keys(await redis.hGetAll(FACULTY_KEY)).length === 0);
+    await setHashInBatches(COURSES_KEY, newCourses);
     let importedRatings = 0;
 
     if (mode === 'ratings') {
