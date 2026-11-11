@@ -182,8 +182,9 @@ export const App = () => {
   const [dataTransferError, setDataTransferError] = useState('');
   const [dataImportMode, setDataImportMode] = useState<'faculty' | 'faculty-courses' | 'courses' | 'ratings' | 'all'>('faculty');
   const [dataImportFile, setDataImportFile] = useState<File | null>(null);
-  const [dataImportPreview, setDataImportPreview] = useState<{ mode: string; counts: Record<string, number>; missingCourses: string[]; ambiguousFacultyIds: string[]; warnings: string[] } | null>(null);
+  const [dataImportPreview, setDataImportPreview] = useState<{ mode: string; counts: Record<string, number>; missingCourses: string[]; ambiguousFacultyIds: string[]; ambiguousFacultyMatches: Array<{ sourceId: string; candidates: Array<{ facultyId: string; name: string; school: string }> }>; warnings: string[] } | null>(null);
   const [selectedImportCourses, setSelectedImportCourses] = useState<string[]>([]);
+  const [facultyImportResolutions, setFacultyImportResolutions] = useState<Record<string, string>>({});
   const [addMissingRatingFaculty, setAddMissingRatingFaculty] = useState(false);
   const [importConfirmation, setImportConfirmation] = useState('');
   const [finalImportConfirmation, setFinalImportConfirmation] = useState(false);
@@ -995,7 +996,7 @@ export const App = () => {
       const response = await fetch('/api/admin/data/import/preview', { method: 'POST', body: form });
       const result = await response.json();
       if (!response.ok || result.status !== 'success') throw new Error(result.message || 'Unable to validate import.');
-      setDataImportPreview(result); setSelectedImportCourses(result.missingCourses ?? []); setImportConfirmation(''); setFinalImportConfirmation(false);
+      setDataImportPreview(result); setSelectedImportCourses(result.missingCourses ?? []); setFacultyImportResolutions({}); setImportConfirmation(''); setFinalImportConfirmation(false);
       setDataTransferMessage('Validation completed. Review the preview before importing.');
     } catch (error) { setDataTransferError(error instanceof Error ? error.message : 'Unable to validate import.'); }
     finally { setDataTransferBusy(false); }
@@ -1009,7 +1010,7 @@ export const App = () => {
     setDataTransferBusy(true); setDataTransferError(''); setDataTransferMessage('');
     try {
       const form = new FormData(); form.append('file', dataImportFile); form.append('mode', dataImportMode);
-      form.append('options', JSON.stringify({ selectedCourses: selectedImportCourses, addMissingFaculty: addMissingRatingFaculty, confirmation: importConfirmation, finalConfirmation: finalImportConfirmation }));
+      form.append('options', JSON.stringify({ selectedCourses: selectedImportCourses, addMissingFaculty: addMissingRatingFaculty, facultyResolutions: facultyImportResolutions, confirmation: importConfirmation, finalConfirmation: finalImportConfirmation }));
       const response = await fetch('/api/admin/data/import/apply', { method: 'POST', body: form });
       const result = await response.json();
       if (!response.ok || result.status !== 'success') throw new Error(result.message || 'Import failed.');
@@ -2914,7 +2915,12 @@ export const App = () => {
                       {dataImportPreview.missingCourses.map(code => <label key={code} style={{ display: 'flex', alignItems: 'center', gap: '8px' }}><input type="checkbox" checked={selectedImportCourses.includes(code)} onChange={event => setSelectedImportCourses(current => event.target.checked ? [...current, code] : current.filter(item => item !== code))} />{code}</label>)}
                     </div>
                   )}
-                  {dataImportPreview.ambiguousFacultyIds.length > 0 && <p role="alert" style={{ color: '#ffb3b3' }}>Ambiguous faculty matches must be resolved before import: {dataImportPreview.ambiguousFacultyIds.join(', ')}. The import will be blocked until these are resolved.</p>}
+                  {dataImportPreview.ambiguousFacultyMatches.length > 0 && (
+                    <div style={{ display: 'grid', gap: '10px' }}>
+                      <strong>Resolve ambiguous faculty matches</strong>
+                      {dataImportPreview.ambiguousFacultyMatches.map(item => <label key={item.sourceId} style={{ display: 'grid', gap: '6px' }}><span>{item.sourceId}</span><select style={styles.input} value={facultyImportResolutions[item.sourceId] ?? ''} onChange={event => setFacultyImportResolutions(current => ({ ...current, [item.sourceId]: event.target.value }))}><option value="">Choose destination faculty</option>{item.candidates.map(candidate => <option key={candidate.facultyId} value={candidate.facultyId}>{candidate.name} ({candidate.school}) — {candidate.facultyId}</option>)}</select></label>)}
+                    </div>
+                  )}
                   {dataImportMode === 'ratings' && <label style={{ display: 'flex', alignItems: 'center', gap: '8px' }}><input type="checkbox" checked={addMissingRatingFaculty} onChange={event => setAddMissingRatingFaculty(event.target.checked)} /> Add faculty details when no matching destination faculty exists</label>}
                   {dataImportMode === 'all' && (
                     <div style={{ border: '1px solid #b83232', borderRadius: '10px', padding: '12px', display: 'grid', gap: '10px' }}>
@@ -2925,7 +2931,7 @@ export const App = () => {
                       <label style={{ display: 'flex', alignItems: 'center', gap: '8px' }}><input type="checkbox" checked={finalImportConfirmation} onChange={event => setFinalImportConfirmation(event.target.checked)} /> I understand this replaces the current app data.</label>
                     </div>
                   )}
-                  <button type="button" style={{ ...styles.button, backgroundColor: dataImportMode === 'all' ? '#a63838' : '#23834c' }} onClick={() => void applyDataImport()} disabled={dataTransferBusy || dataImportPreview.ambiguousFacultyIds.length > 0 || (dataImportMode === 'all' && (importConfirmation !== 'CONFIRM' || !finalImportConfirmation))}>{dataTransferBusy ? 'Importing...' : dataImportMode === 'all' ? 'Confirm Full Replacement' : 'Import Selected Data'}</button>
+                  <button type="button" style={{ ...styles.button, backgroundColor: dataImportMode === 'all' ? '#a63838' : '#23834c' }} onClick={() => void applyDataImport()} disabled={dataTransferBusy || dataImportPreview.ambiguousFacultyMatches.some(item => !facultyImportResolutions[item.sourceId]) || (dataImportMode === 'all' && (importConfirmation !== 'CONFIRM' || !finalImportConfirmation))}>{dataTransferBusy ? 'Importing...' : dataImportMode === 'all' ? 'Confirm Full Replacement' : 'Import Selected Data'}</button>
                 </div>
               )}
               {dataTransferError && <p role="alert" style={{ color: '#ffb3b3', margin: 0 }}>{dataTransferError}</p>}
