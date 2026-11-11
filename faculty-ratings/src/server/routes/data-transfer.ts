@@ -199,3 +199,123 @@ dataTransfer.get('/export', async (c) => {
     }, 500);
   }
 });
+
+
+type ImportMode = 'faculty' | 'faculty-courses' | 'courses' | 'ratings' | 'all';
+type CsvRow = Record<string, string>;
+
+const validFacultyRow = (row: CsvRow) =>
+  Boolean(row.first_name?.trim()) &&
+  Boolean(row.last_name?.trim()) &&
+  row.first_name.length <= 60 &&
+  (row.middle_name ?? '').length <= 60 &&
+  row.last_name.length <= 60 &&
+  ['SASL', 'SBET', 'SCOPE', 'SCAI', 'SMEC', 'BS', 'SEEE', 'SA'].includes((row.school ?? '').trim().toUpperCase());
+
+const identityKey = (row: { first_name?: string; middle_name?: string; last_name?: string; school?: string }) =>
+  [row.first_name, row.middle_name, row.last_name, row.school]
+    .map(value => (value ?? '').normalize('NFKC').trim().replace(/\\s+/g, ' ').toLowerCase())
+    .join('|');
+
+const validRatingRow = (row: CsvRow) => {
+  const fields = ['teaching', 'internal_marking', 'exam_evaluation', 'overall_recommendation', 'class_average'];
+  return fields.every(field => /^\\d+$/.test(row[field] ?? '') && Number(row[field]) >= 0 && Number(row[field]) <= 100) &&
+    ['no', 'sometimes', 'yes'].includes(row.question_provision ?? '') &&
+    /^\\d{1,16}$/.test(row.created_at ?? '');
+};
+
+const readImportArchive = async (c: import('hono').Context) => {
+  const form = await c.req.formData();
+  const mode = String(form.get('mode') ?? '') as ImportMode;
+  const upload = form.get('file');
+  if (!['faculty', 'faculty-courses', 'courses', 'ratings', 'all'].includes(mode)) throw new Error('Select a valid import mode.');
+  if (!(upload instanceof File)) throw new Error('Choose a ZIP file to import.');
+  const files = readZip(new Uint8Array(await upload.arrayBuffer()));
+  const manifest = JSON.parse(files['manifest.json'] ?? 'null') as { format?: string; schemaVersion?: number } | null;
+  if (!manifest || manifest.format !== 'faculty-ratings-export' || manifest.schemaVersion !== 1) {
+    throw new Error('This ZIP is not a supported Faculty Ratings export (schema version 1).');
+  }
+  const required: Record<ImportMode, string[]> = {
+    faculty: ['faculties.csv'],
+    'faculty-courses': ['faculties.csv', 'faculty_course_assignments.csv'],
+    courses: ['courses.csv'],
+    ratings: ['faculties.csv', 'ratings.csv'],
+    all: ['faculties.csv', 'courses.csv', 'faculty_course_assignments.csv', 'ratings.csv'],
+  };
+  for (const name of required[mode]) if (!(name in files)) throw new Error('The archive is missing ' + name + '.');
+  const metadata = JSON.parse(files['metadata.json'] ?? 'null') as { schemaVersion?: number } | null;
+  if (!metadata || metadata.schemaVersion !== 1) throw new Error('The export metadata is missing or unsupported.');
+  const rows = {
+    faculties: files['faculties.csv'] === undefined ? [] : parseCsv(files['faculties.csv']),
+    courses: files['courses.csv'] === undefined ? [] : parseCsv(files['courses.csv']),
+    assignments: files['faculty_course_assignments.csv'] === undefined ? [] : parseCsv(files['faculty_course_assignments.csv']),
+    ratings: files['ratings.csv'] === undefined ? [] : parseCsv(files['ratings.csv']),
+  };
+  if (Object.values(rows).some(list => list.length > 100_000)) throw new Error('The archive contains too many CSV rows.');
+  if (rows.faculties.some(row => !validFacultyRow(row))) throw new Error('One or more faculty rows contain invalid names or school values.');
+  if (rows.courses.some(row => !/^[A-Z]{3}[0-9]{4}$/.test((row.course_code ?? '').trim().toUpperCase()))) throw new Error('One or more course codes are invalid. Expected format: XXX0000.');
+  const sourceFacultyIds = new Set(rows.faculties.map(row => row.faculty_id).filter(Boolean));
+  if (rows.faculties.some(row => !row.faculty_id || !/^VITBFAC[0-9]{4,}$/.test(row.faculty_id))) throw new Error('Every faculty row must have a valid permanent faculty ID.');
+  if (rows.assignments.some(row => !sourceFacultyIds.has(row.faculty_id) || !/^[A-Z]{3}[0-9]{4}$/.test((row.course_code ?? '').trim().toUpperCase()))) {
+    throw new Error('Faculty course assignments contain an unknown faculty ID or invalid course code.');
+  }
+  if (rows.ratings.some(row => !sourceFacultyIds.has(row.faculty_id) || !validRatingRow(row))) {
+    throw new Error('Ratings contain an unknown faculty ID or invalid rating values.');
+  }
+  if (rows.faculties.length !== new Set(rows.faculties.map(row => row.faculty_id)).size) throw new Error('The archive contains duplicate permanent faculty IDs.');
+  if (rows.courses.length !== new Set(rows.courses.map(row => row.course_code.trim().toUpperCase())).size) throw new Error('The archive contains duplicate course codes.');
+  return { mode, rows };
+};
+
+dataTransfer.post('/import/preview', async (c) => {
+  const actor = await getAdminActor();
+  if (!actor) return c.json({ status: 'error', message: 'Approved admin access is required.' }, 403);
+  try {
+    const { mode, rows } = await readImportArchive(c);
+    const [storedFaculty, storedCourses] = await Promise.all([redis.hGetAll(FACULTY_KEY), redis.hGetAll(COURSES_KEY)]);
+    const existingFaculty = parseHash<Faculty>(storedFaculty).map(({ id, record }) => ({ id, record }));
+    const existingCourses = new Set(Object.keys(storedCourses));
+    const facultyById = new Map(existingFaculty.filter(item => item.record.facultyId).map(item => [item.record.facultyId!, item]));
+    const identities = new Map<string, typeof existingFaculty>();
+    for (const item of existingFaculty) {
+      const key = identityKey({ first_name: item.record.firstName, middle_name: item.record.middleName, last_name: item.record.lastName, school: item.record.school });
+      identities.set(key, [...(identities.get(key) ?? []), item]);
+    }
+    const matches = rows.faculties.map(source => {
+      const byId = facultyById.get(source.faculty_id);
+      const byIdentity = identities.get(identityKey(source)) ?? [];
+      return { sourceId: source.faculty_id, match: byId ? 'faculty-id' : byIdentity.length === 1 ? 'identity' : byIdentity.length > 1 ? 'ambiguous' : 'new' };
+    });
+    const missingCourses = Array.from(new Set([
+      ...rows.courses.map(row => row.course_code.trim().toUpperCase()),
+      ...rows.assignments.map(row => row.course_code.trim().toUpperCase()),
+    ])).filter(code => !existingCourses.has(code)).sort();
+    return c.json({
+      status: 'success',
+      mode,
+      counts: {
+        facultiesInFile: rows.faculties.length,
+        coursesInFile: rows.courses.length,
+        assignmentsInFile: rows.assignments.length,
+        ratingsInFile: rows.ratings.length,
+        existingFaculties: existingFaculty.length,
+        existingCourses: existingCourses.size,
+        newFaculties: matches.filter(item => item.match === 'new').length,
+        matchedByFacultyId: matches.filter(item => item.match === 'faculty-id').length,
+        matchedByIdentity: matches.filter(item => item.match === 'identity').length,
+        ambiguousFacultyMatches: matches.filter(item => item.match === 'ambiguous').length,
+        missingCourses: missingCourses.length,
+      },
+      missingCourses,
+      ambiguousFacultyIds: matches.filter(item => item.match === 'ambiguous').map(item => item.sourceId),
+      warnings: mode === 'all' ? [
+        'This operation replaces faculty, courses, assignments, and ratings in this subreddit.',
+        'Approved admins may perform this operation. A full backup is created before replacement.',
+        'Owner, approved admins, security settings, moderation/admin logs, and security audit logs are preserved.',
+      ] : [],
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Unable to validate the import archive.';
+    return c.json({ status: 'error', message }, 400);
+  }
+});
