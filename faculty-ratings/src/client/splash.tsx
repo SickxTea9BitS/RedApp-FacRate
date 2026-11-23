@@ -178,11 +178,13 @@ export const App = () => {
   const [includeFacultyAssignments, setIncludeFacultyAssignments] = useState(true);
   const [facultyCourseDataOnly, setFacultyCourseDataOnly] = useState(false);
   const [dataTransferBusy, setDataTransferBusy] = useState(false);
-  const [dataExportDownload, setDataExportDownload] = useState<{ url: string; filename: string; blob: Blob } | null>(null);
+  const [exportedJsonText, setExportedJsonText] = useState('');
   const [dataTransferMessage, setDataTransferMessage] = useState('');
   const [dataTransferError, setDataTransferError] = useState('');
   const [dataImportMode, setDataImportMode] = useState<'faculty' | 'faculty-courses' | 'courses' | 'ratings' | 'all'>('faculty');
   const [dataImportFile, setDataImportFile] = useState<File | null>(null);
+  const [importInputMethod, setImportInputMethod] = useState<'file' | 'paste'>('file');
+  const [pastedImportJson, setPastedImportJson] = useState('');
   const [dataImportPreview, setDataImportPreview] = useState<{ mode: string; counts: Record<string, number>; missingCourses: string[]; ambiguousFacultyIds: string[]; ambiguousFacultyMatches: Array<{ sourceId: string; candidates: Array<{ facultyId: string; name: string; school: string }> }>; warnings: string[] } | null>(null);
   const [selectedImportCourses, setSelectedImportCourses] = useState<string[]>([]);
   const [facultyImportResolutions, setFacultyImportResolutions] = useState<Record<string, string>>({});
@@ -1048,24 +1050,23 @@ export const App = () => {
   };
 
   const exportDataArchive = async () => {
-    setDataTransferBusy(true); setDataTransferError(''); setDataTransferMessage(''); setDataExportDownload(null);
+    setDataTransferBusy(true); setDataTransferError(''); setDataTransferMessage(''); setExportedJsonText('');
     try {
       const type = facultyCourseDataOnly ? 'faculty-courses' : dataExportType;
       const query = new URLSearchParams({ type, includeAssignments: String(includeFacultyAssignments) });
-      const response = await fetch('/api/admin/data/export?' + query.toString());
-      if (!response.ok) {
-        const result = await response.json().catch(() => ({ message: 'Unable to export data.' }));
-        throw new Error(result.message || 'Unable to export data.');
+      const response = await fetch('/api/admin/data/export/json?' + query.toString());
+      const result = await response.json();
+      if (!response.ok || result.status === 'error') throw new Error(result.message || 'Unable to export JSON data.');
+      const jsonText = JSON.stringify(result, null, 2);
+      setExportedJsonText(jsonText);
+      try {
+        await navigator.clipboard.writeText(jsonText);
+        setDataTransferMessage('JSON export copied to clipboard. You can paste it into a .json file or another app.');
+      } catch {
+        setDataTransferMessage('JSON export is ready below. Clipboard access was blocked; select and copy the JSON manually.');
       }
-      const blob = await response.blob();
-      const disposition = response.headers.get('Content-Disposition') ?? '';
-      const filename = disposition.match(/filename="?([^";]+)"?/i)?.[1] ?? 'FacultyRatings_Export.zip';
-      const url = URL.createObjectURL(blob);
-      setDataExportDownload({ url, filename, blob });
-      setDataTransferMessage('Export prepared. Tap the download link below to save the ZIP.');
-    } catch (error) {
-      setDataTransferError(error instanceof Error ? error.message : 'Unable to export data.');
-    } finally { setDataTransferBusy(false); }
+    } catch (error) { setDataTransferError(error instanceof Error ? error.message : 'Unable to export JSON data.'); }
+    finally { setDataTransferBusy(false); }
   };
 
   const scrollToAdminContent = () => {
