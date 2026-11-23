@@ -3046,7 +3046,7 @@ export const App = () => {
                       <label style={{ display: 'flex', alignItems: 'center', gap: '8px' }}><input type="checkbox" checked={finalImportConfirmation} onChange={event => setFinalImportConfirmation(event.target.checked)} /> I understand this replaces the current app data.</label>
                     </div>
                   )}
-                  <button type="button" style={{ ...styles.button, backgroundColor: dataImportMode === 'all' ? '#a63838' : '#23834c' }} onClick={() => void applyDataImport()} disabled={dataTransferBusy || dataImportPreview.ambiguousFacultyMatches.some(item => !facultyImportResolutions[item.sourceId]) || (dataImportMode === 'all' && (importConfirmation !== 'CONFIRM' || !finalImportConfirmation))}>{dataTransferBusy ? 'Importing...' : dataImportMode === 'all' ? 'Confirm Full Replacement' : 'Import Selected Data'}</button>
+                  <button type="button" style={{ ...styles.button, backgroundColor: dataImportMode === 'all' ? '#a63838' : '#23834c' }} onClick={() => void applyDataImport()} disabled={dataTransferBusy || dataImportPreview.ambiguousFacultyMatches.some(item => !facultyImportResolutions[item.sourceId]) || (dataImportMode === 'all' && (importConfirmation !== 'CONFIRM' || !finalImportConfirmation))}>{dataTransferBusy ? 'Importing...' : dataImportMode === 'all' ? 'Confirm Full Replacement' : 'Update Data'}</button>
                 </div>
               )}
               {dataTransferError && <p role="alert" style={{ color: '#ffb3b3', margin: 0 }}>{dataTransferError}</p>}
