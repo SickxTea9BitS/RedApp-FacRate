@@ -1046,26 +1046,12 @@ export const App = () => {
     finally { setDataTransferBusy(false); }
   };
 
-  const exportDataArchive = async () => {
-    setDataTransferBusy(true); setDataTransferError(''); setDataTransferMessage('');
-    try {
-      const type = facultyCourseDataOnly ? 'faculty-courses' : dataExportType;
-      const query = new URLSearchParams({ type, includeAssignments: String(includeFacultyAssignments) });
-      const response = await fetch('/api/admin/data/export?' + query.toString());
-      if (!response.ok) {
-        const result = await response.json().catch(() => ({ message: 'Unable to export data.' }));
-        throw new Error(result.message || 'Unable to export data.');
-      }
-      const blob = await response.blob();
-      const disposition = response.headers.get('Content-Disposition') ?? '';
-      const filename = disposition.match(/filename="?([^";]+)"?/i)?.[1] ?? 'FacultyRatings_Export.zip';
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement('a'); link.href = url; link.download = filename; link.click();
-      window.setTimeout(() => URL.revokeObjectURL(url), 1000);
-      setDataTransferMessage('Your ZIP export is ready.');
-    } catch (error) {
-      setDataTransferError(error instanceof Error ? error.message : 'Unable to export data.');
-    } finally { setDataTransferBusy(false); }
+  const exportDataArchive = () => {
+    setDataTransferError(''); setDataTransferMessage('');
+    const type = facultyCourseDataOnly ? 'faculty-courses' : dataExportType;
+    const query = new URLSearchParams({ type, includeAssignments: String(includeFacultyAssignments) });
+    setDataTransferMessage('Opening ZIP export…');
+    window.location.assign('/api/admin/data/export?' + query.toString());
   };
 
   const openAdminDashboard = () => {
