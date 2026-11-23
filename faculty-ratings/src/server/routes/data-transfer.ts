@@ -290,7 +290,7 @@ const validRatingRow = (row: CsvRow) => {
 
 const readImportArchive = async (form: FormData) => {
   const mode = String(form.get('mode') ?? '') as ImportMode;
-  const upload = form.get('file');
+  let upload = form.get('file');
   if (!['faculty', 'faculty-courses', 'courses', 'ratings', 'all'].includes(mode)) throw new Error('Select a valid import mode.');
   if (!(upload instanceof File)) throw new Error('Choose a ZIP file to import.');
   const files = readZip(new Uint8Array(await upload.arrayBuffer()));
