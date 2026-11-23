@@ -178,6 +178,7 @@ export const App = () => {
   const [includeFacultyAssignments, setIncludeFacultyAssignments] = useState(true);
   const [facultyCourseDataOnly, setFacultyCourseDataOnly] = useState(false);
   const [dataTransferBusy, setDataTransferBusy] = useState(false);
+  const [dataExportDownload, setDataExportDownload] = useState<{ url: string; filename: string } | null>(null);
   const [dataTransferMessage, setDataTransferMessage] = useState('');
   const [dataTransferError, setDataTransferError] = useState('');
   const [dataImportMode, setDataImportMode] = useState<'faculty' | 'faculty-courses' | 'courses' | 'ratings' | 'all'>('faculty');
@@ -1046,12 +1047,25 @@ export const App = () => {
     finally { setDataTransferBusy(false); }
   };
 
-  const exportDataArchive = () => {
-    setDataTransferError(''); setDataTransferMessage('');
-    const type = facultyCourseDataOnly ? 'faculty-courses' : dataExportType;
-    const query = new URLSearchParams({ type, includeAssignments: String(includeFacultyAssignments) });
-    setDataTransferMessage('Opening ZIP export…');
-    window.location.assign('/api/admin/data/export?' + query.toString());
+  const exportDataArchive = async () => {
+    setDataTransferBusy(true); setDataTransferError(''); setDataTransferMessage(''); setDataExportDownload(null);
+    try {
+      const type = facultyCourseDataOnly ? 'faculty-courses' : dataExportType;
+      const query = new URLSearchParams({ type, includeAssignments: String(includeFacultyAssignments) });
+      const response = await fetch('/api/admin/data/export?' + query.toString());
+      if (!response.ok) {
+        const result = await response.json().catch(() => ({ message: 'Unable to export data.' }));
+        throw new Error(result.message || 'Unable to export data.');
+      }
+      const blob = await response.blob();
+      const disposition = response.headers.get('Content-Disposition') ?? '';
+      const filename = disposition.match(/filename="?([^";]+)"?/i)?.[1] ?? 'FacultyRatings_Export.zip';
+      const url = URL.createObjectURL(blob);
+      setDataExportDownload({ url, filename });
+      setDataTransferMessage('Export prepared. Tap the download link below to save the ZIP.');
+    } catch (error) {
+      setDataTransferError(error instanceof Error ? error.message : 'Unable to export data.');
+    } finally { setDataTransferBusy(false); }
   };
 
   const openAdminDashboard = () => {
@@ -2895,7 +2909,8 @@ export const App = () => {
               {dataTransferError && <p role="alert" style={{ color: '#ffb3b3', margin: 0 }}>{dataTransferError}</p>}
               {dataTransferMessage && <p role="status" style={{ color: '#8de0ad', margin: 0 }}>{dataTransferMessage}</p>}
               <p style={styles.muted}>ZIP files are limited to 4.5 MB to stay below the app request-size constraints. If an export is too large, export smaller datasets separately.</p>
-              <button type="button" style={styles.button} onClick={() => void exportDataArchive()} disabled={dataTransferBusy}>{dataTransferBusy ? 'Preparing ZIP...' : 'Download ZIP Export'}</button>
+              <button type="button" style={styles.button} onClick={() => void exportDataArchive()} disabled={dataTransferBusy}>{dataTransferBusy ? 'Preparing ZIP...' : 'Prepare ZIP Export'}</button>
+              {dataExportDownload && <a href={dataExportDownload.url} download={dataExportDownload.filename} style={{ ...styles.button, display: 'block', textAlign: 'center', textDecoration: 'none', marginTop: '8px' }}>Tap to Save {dataExportDownload.filename}</a>}
             </div>
           )}
           {adminSectionView === 'data-import' && (
