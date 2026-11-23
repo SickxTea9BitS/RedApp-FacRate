@@ -2965,7 +2965,7 @@ export const App = () => {
           {adminSectionView === 'data-import' && (
             <div id="admin-section-content" style={{ ...styles.card, display: 'grid', gap: '14px', scrollMarginTop: '16px' }}>
               <h2 style={{ margin: 0 }}>Import App Data</h2>
-              <p style={styles.muted}>Only ZIP archives exported by Faculty Ratings schema version 1 are accepted. Uploads are limited to 4.5 MB; the archive is validated before any records are changed.</p>
+              <p style={styles.muted}>Import a Faculty Ratings JSON export. The data is validated before the Update Data button becomes available. No records are changed during validation.</p>
               <label style={styles.label}>Import Mode</label>
               <select style={styles.input} value={dataImportMode} onChange={event => { setDataImportMode(event.target.value as typeof dataImportMode); setDataImportPreview(null); }}>
                 <option value="faculty">Faculty Data</option>
@@ -2974,9 +2974,21 @@ export const App = () => {
                 <option value="ratings">Faculty Ratings (Anonymous)</option>
                 <option value="all">All Data (Full Replacement)</option>
               </select>
-              <label style={styles.label}>ZIP Archive</label>
-              <input id="data-import-file" style={styles.input} type="file" accept=".zip,application/zip" onChange={event => { setDataImportFile(event.target.files?.[0] ?? null); setDataImportPreview(null); }} />
-              <button type="button" style={styles.secondaryButton} onClick={() => void previewDataImport()} disabled={dataTransferBusy || !dataImportFile}>{dataTransferBusy ? 'Validating...' : 'Validate & Preview'}</button>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: '8px' }}>
+                <button type="button" style={importInputMethod === 'file' ? styles.button : styles.secondaryButton} onClick={() => { setImportInputMethod('file'); setDataImportPreview(null); setDataTransferError(''); }}>Import using Json file</button>
+                <button type="button" style={importInputMethod === 'paste' ? styles.button : styles.secondaryButton} onClick={() => { setImportInputMethod('paste'); setDataImportPreview(null); setDataTransferError(''); void pasteImportFromClipboard(); }}>Paste data</button>
+              </div>
+              {importInputMethod === 'file' && <>
+                <label style={styles.label}>JSON Export File</label>
+                <input id="data-import-file" style={styles.input} type="file" accept=".json,application/json" onChange={event => { setDataImportFile(event.target.files?.[0] ?? null); setDataImportPreview(null); setDataTransferError(''); }} />
+                <button type="button" style={styles.secondaryButton} onClick={() => void previewDataImport()} disabled={dataTransferBusy || !dataImportFile}>{dataTransferBusy ? 'Validating...' : 'Validate JSON'}</button>
+              </>}
+              {importInputMethod === 'paste' && <>
+                <label style={styles.label}>Paste JSON Export</label>
+                <textarea style={{ ...styles.input, minHeight: '180px', fontFamily: 'monospace', fontSize: '0.8rem' }} value={pastedImportJson} onChange={event => { setPastedImportJson(event.target.value); setDataImportPreview(null); setDataTransferError(''); }} placeholder="JSON from clipboard will appear here. You can also paste manually." />
+                <button type="button" style={styles.secondaryButton} onClick={() => void pasteImportFromClipboard()} disabled={dataTransferBusy}>Read Clipboard & Validate</button>
+                <button type="button" style={styles.secondaryButton} onClick={() => void validatePastedImport()} disabled={dataTransferBusy || !pastedImportJson.trim()}>Validate Pasted JSON</button>
+              </>}
               <div style={{ borderTop: '1px solid #56618d', paddingTop: '14px', display: 'grid', gap: '10px' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
                   <h3 style={{ margin: 0 }}>Recovery Backups</h3>
