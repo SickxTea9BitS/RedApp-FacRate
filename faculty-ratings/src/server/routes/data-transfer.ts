@@ -313,7 +313,13 @@ const readImportArchive = async (form: FormData) => {
   const mode = String(form.get('mode') ?? '') as ImportMode;
   let upload = form.get('file');
   if (!['faculty', 'faculty-courses', 'courses', 'ratings', 'all'].includes(mode)) throw new Error('Select a valid import mode.');
-  if (!(upload instanceof File)) throw new Error('Choose a ZIP file to import.');
+  if (!(upload instanceof File)) throw new Error('Choose a ZIP or JSON file to import.');
+  if (upload.name.toLowerCase().endsWith('.json') || upload.type === 'application/json') {
+    let parsed: unknown;
+    try { parsed = JSON.parse(await upload.text()); } catch { throw new Error('The selected JSON file is not valid JSON.'); }
+    const archive = jsonExportToZip(parsed, mode);
+    upload = new File([archive], 'json-import.zip', { type: 'application/zip' });
+  }
   const files = readZip(new Uint8Array(await upload.arrayBuffer()));
   const manifest = JSON.parse(files['manifest.json'] ?? 'null') as { format?: string; schemaVersion?: number } | null;
   if (!manifest || manifest.format !== 'faculty-ratings-export' || manifest.schemaVersion !== 1) {
