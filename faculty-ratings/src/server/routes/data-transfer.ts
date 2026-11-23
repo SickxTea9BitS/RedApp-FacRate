@@ -103,6 +103,50 @@ const assignmentRows = (faculty: Array<{ id: string; record: Faculty }>) =>
     course_code: courseCode,
   })));
 
+dataTransfer.get('/export/json', async (c) => {
+  const actor = await getAdminActor();
+  if (!actor) return c.json({ status: 'error', message: 'Approved admin access is required.' }, 403);
+  const dataset = c.req.query('type') ?? 'all';
+  const includeAssignments = c.req.query('includeAssignments') !== 'false';
+  if (!['faculty', 'faculty-courses', 'courses', 'ratings', 'all'].includes(dataset)) return c.json({ status: 'error', message: 'Choose a supported export type.' }, 400);
+  try {
+    const storedCourses = await redis.hGetAll(COURSES_KEY);
+    await ensurePermanentFacultyIds();
+    const faculty = parseHash<Faculty>(await redis.hGetAll(FACULTY_KEY));
+    const courses = parseHash<{ code?: string }>(storedCourses).filter(({ id, record }) => COURSE_CODE_PATTERN.test(record.code ?? id)).map(({ id, record }) => ({ course_code: record.code ?? id }));
+    const faculties = facultyRows(faculty);
+    const assignments = assignmentRows(faculty);
+    const ratings: Array<Record<string, string | number>> = [];
+    if (dataset === 'ratings' || dataset === 'all') {
+      for (const { id, record } of faculty) {
+        if (!record.facultyId) continue;
+        for (const value of Object.values(await redis.hGetAll(RATINGS_PREFIX + id))) {
+          try {
+            const rating = JSON.parse(value) as Partial<Rating>;
+            if (!Number.isInteger(rating.teaching) || rating.teaching! < 0 || rating.teaching! > 100 || !Number.isInteger(rating.internalMarking) || rating.internalMarking! < 0 || rating.internalMarking! > 100 || !Number.isInteger(rating.examEvaluation) || rating.examEvaluation! < 0 || rating.examEvaluation! > 100 || !Number.isInteger(rating.overallRecommendation) || rating.overallRecommendation! < 0 || rating.overallRecommendation! > 100 || !Number.isInteger(rating.classAverage) || rating.classAverage! < 0 || rating.classAverage! > 100 || !['no', 'sometimes', 'yes'].includes(rating.questionProvision ?? '')) continue;
+            ratings.push({ faculty_id: record.facultyId, teaching: rating.teaching!, internal_marking: rating.internalMarking!, exam_evaluation: rating.examEvaluation!, overall_recommendation: rating.overallRecommendation!, class_average: rating.classAverage!, question_provision: rating.questionProvision!, created_at: rating.createdAt ?? 0 });
+          } catch { continue; }
+        }
+      }
+    }
+    const data: Record<string, unknown> = {};
+    const counts: Record<string, number> = {};
+    if (dataset === 'faculty' || dataset === 'faculty-courses' || dataset === 'ratings' || dataset === 'all') { data.faculties = faculties; counts.faculties = faculties.length; }
+    if (dataset === 'courses' || dataset === 'all' || dataset === 'faculty' && includeAssignments) { data.courses = courses; counts.courses = courses.length; }
+    if (dataset === 'faculty-courses' || dataset === 'all' || dataset === 'faculty' && includeAssignments) { data.assignments = assignments; counts.assignments = assignments.length; }
+    if (dataset === 'ratings' || dataset === 'all') { data.ratings = ratings; counts.ratings = ratings.length; }
+    const exportedAt = new Date().toISOString();
+    const json = { format: 'faculty-ratings-json-export', schemaVersion: 1, exportedAt, dataset, counts, data };
+    const text = JSON.stringify(json);
+    await logExport(actor, dataset, new TextEncoder().encode(text).length, counts);
+    return c.json(json, 200, { 'Cache-Control': 'no-store' });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Unable to export JSON data.';
+    try { await writeImportLog(actor, 'data.export.json', { dataset, error: message }, 'failure'); } catch { /* Preserve original error. */ }
+    return c.json({ status: 'error', message }, 500);
+  }
+});
+
 dataTransfer.get('/export', async (c) => {
   const actor = await getAdminActor();
   if (!actor) return c.json({ status: 'error', message: 'Approved admin access is required.' }, 403);
