@@ -1098,22 +1098,6 @@ export const App = () => {
     }, 80);
   };
 
-  const shareDataExport = async () => {
-    if (!dataExportDownload) return;
-    try {
-      const file = new File([dataExportDownload.blob], dataExportDownload.filename, { type: 'application/zip' });
-      if (!navigator.share || !navigator.canShare?.({ files: [file] })) {
-        setDataTransferError('File sharing is not supported here. Try the download link below, or open the app in a browser that supports file downloads.');
-        return;
-      }
-      await navigator.share({ files: [file], title: dataExportDownload.filename });
-      setDataTransferMessage('ZIP shared. Choose Save to Files or another destination from the share sheet.');
-    } catch (error) {
-      if (error instanceof Error && error.name === 'AbortError') return;
-      setDataTransferError(error instanceof Error ? error.message : 'Unable to share the ZIP file.');
-    }
-  };
-
   const openAdminDashboard = () => {
     setAdminSection('menu');
     setFacultyAdminSearch('');
