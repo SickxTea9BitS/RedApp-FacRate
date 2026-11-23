@@ -283,9 +283,9 @@ const identityKey = (row: { first_name?: string; middle_name?: string; last_name
 
 const validRatingRow = (row: CsvRow) => {
   const fields = ['teaching', 'internal_marking', 'exam_evaluation', 'overall_recommendation', 'class_average'];
-  return fields.every(field => /^\\d+$/.test(row[field] ?? '') && Number(row[field]) >= 0 && Number(row[field]) <= 100) &&
+  return fields.every(field => /^\d+$/.test(row[field] ?? '') && Number(row[field]) >= 0 && Number(row[field]) <= 100) &&
     ['no', 'sometimes', 'yes'].includes(row.question_provision ?? '') &&
-    /^\\d{1,16}$/.test(row.created_at ?? '');
+    /^\d{1,16}$/.test(row.created_at ?? '');
 };
 
 const jsonExportToZip = (value: unknown, mode: ImportMode) => {
