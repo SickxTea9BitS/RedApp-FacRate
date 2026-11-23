@@ -1017,18 +1017,41 @@ export const App = () => {
     finally { setDataTransferBusy(false); }
   };
 
-  const previewDataImport = async () => {
-    if (!dataImportFile) { setDataTransferError('Choose a ZIP file first.'); return; }
-    setDataTransferBusy(true); setDataTransferError(''); setDataTransferMessage(''); setDataImportPreview(null);
+  const previewImportFile = async (file: File) => {
+    setDataImportFile(file); setDataTransferBusy(true); setDataTransferError(''); setDataTransferMessage(''); setDataImportPreview(null);
     try {
-      const form = new FormData(); form.append('file', dataImportFile); form.append('mode', dataImportMode);
+      const form = new FormData(); form.append('file', file); form.append('mode', dataImportMode);
       const response = await fetch('/api/admin/data/import/preview', { method: 'POST', body: form });
       const result = await response.json();
-      if (!response.ok || result.status !== 'success') throw new Error(result.message || 'Unable to validate import.');
+      if (!response.ok || result.status !== 'success') throw new Error(result.message || 'Unable to validate JSON import.');
       setDataImportPreview(result); setSelectedImportCourses(result.missingCourses ?? []); setFacultyImportResolutions({}); setImportConfirmation(''); setFinalImportConfirmation(false);
-      setDataTransferMessage('Validation completed. Review the preview before importing.');
-    } catch (error) { setDataTransferError(error instanceof Error ? error.message : 'Unable to validate import.'); }
+      setDataTransferMessage('JSON format is valid. Review the preview before updating data.');
+    } catch (error) { setDataTransferError(error instanceof Error ? error.message : 'Unable to validate JSON import.'); }
     finally { setDataTransferBusy(false); }
+  };
+
+  const previewDataImport = async () => {
+    if (!dataImportFile) { setDataTransferError('Choose a JSON file first.'); return; }
+    await previewImportFile(dataImportFile);
+  };
+
+  const pasteImportFromClipboard = async () => {
+    setDataTransferError(''); setDataTransferMessage('');
+    try {
+      const text = await navigator.clipboard.readText();
+      if (!text.trim()) throw new Error('Clipboard is empty. Copy a JSON export first.');
+      setPastedImportJson(text);
+      const file = new File([text], 'clipboard-import.json', { type: 'application/json' });
+      await previewImportFile(file);
+    } catch (error) {
+      setDataTransferError(error instanceof Error ? error.message : 'Unable to read clipboard. Paste the JSON into the text box instead.');
+    }
+  };
+
+  const validatePastedImport = async () => {
+    if (!pastedImportJson.trim()) { setDataTransferError('Paste JSON data first.'); return; }
+    const file = new File([pastedImportJson], 'pasted-import.json', { type: 'application/json' });
+    await previewImportFile(file);
   };
 
   const applyDataImport = async () => {
