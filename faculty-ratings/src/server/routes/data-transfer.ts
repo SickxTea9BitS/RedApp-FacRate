@@ -336,7 +336,7 @@ const readImportArchive = async (form: FormData) => {
   const metadata = JSON.parse(files['metadata.json'] ?? 'null') as { schemaVersion?: number } | null;
   if (!metadata || metadata.schemaVersion !== 1) throw new Error('The export metadata is missing or unsupported.');
   const requireHeaders = (name: string, expected: string[]) => {
-    const header = (files[name] ?? '').split(/\\r?\\n/, 1)[0]!.split(',').map(value => value.trim());
+    const header = (files[name] ?? '').split(/\r?\n/, 1)[0]!.split(',').map(value => value.trim());
     if (header.length !== expected.length || expected.some((value, index) => header[index] !== value)) {
       throw new Error(name + ' has missing, unexpected, or incorrectly ordered columns.');
     }
