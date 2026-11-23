@@ -178,7 +178,7 @@ export const App = () => {
   const [includeFacultyAssignments, setIncludeFacultyAssignments] = useState(true);
   const [facultyCourseDataOnly, setFacultyCourseDataOnly] = useState(false);
   const [dataTransferBusy, setDataTransferBusy] = useState(false);
-  const [dataExportDownload, setDataExportDownload] = useState<{ url: string; filename: string } | null>(null);
+  const [dataExportDownload, setDataExportDownload] = useState<{ url: string; filename: string; blob: Blob } | null>(null);
   const [dataTransferMessage, setDataTransferMessage] = useState('');
   const [dataTransferError, setDataTransferError] = useState('');
   const [dataImportMode, setDataImportMode] = useState<'faculty' | 'faculty-courses' | 'courses' | 'ratings' | 'all'>('faculty');
@@ -1061,11 +1061,33 @@ export const App = () => {
       const disposition = response.headers.get('Content-Disposition') ?? '';
       const filename = disposition.match(/filename="?([^";]+)"?/i)?.[1] ?? 'FacultyRatings_Export.zip';
       const url = URL.createObjectURL(blob);
-      setDataExportDownload({ url, filename });
+      setDataExportDownload({ url, filename, blob });
       setDataTransferMessage('Export prepared. Tap the download link below to save the ZIP.');
     } catch (error) {
       setDataTransferError(error instanceof Error ? error.message : 'Unable to export data.');
     } finally { setDataTransferBusy(false); }
+  };
+
+  const scrollToAdminContent = () => {
+    window.setTimeout(() => {
+      document.getElementById('admin-section-content')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, 80);
+  };
+
+  const shareDataExport = async () => {
+    if (!dataExportDownload) return;
+    try {
+      const file = new File([dataExportDownload.blob], dataExportDownload.filename, { type: 'application/zip' });
+      if (!navigator.share || !navigator.canShare?.({ files: [file] })) {
+        setDataTransferError('File sharing is not supported here. Try the download link below, or open the app in a browser that supports file downloads.');
+        return;
+      }
+      await navigator.share({ files: [file], title: dataExportDownload.filename });
+      setDataTransferMessage('ZIP shared. Choose Save to Files or another destination from the share sheet.');
+    } catch (error) {
+      if (error instanceof Error && error.name === 'AbortError') return;
+      setDataTransferError(error instanceof Error ? error.message : 'Unable to share the ZIP file.');
+    }
   };
 
   const openAdminDashboard = () => {
@@ -2871,16 +2893,16 @@ export const App = () => {
             </div>
           )}
           <div className="admin-menu-grid">
-            <button className="admin-menu-card" style={styles.secondaryButton} onClick={() => { setAdminSectionView('overview'); void refreshAdminStatus(); }}>Overview</button>
-            {adminRole === 'owner' && <button className="admin-menu-card" style={styles.secondaryButton} onClick={() => { setAdminSectionView('admins'); void loadAdminUsers(); }}>Manage Admins</button>}
-            <button className="admin-menu-card" style={styles.secondaryButton} onClick={() => { setAdminSectionView('moderator-logs'); void loadAdminLogs('moderator'); }}>Moderator Logs</button>
-            <button className="admin-menu-card" style={styles.secondaryButton} onClick={() => { setAdminSectionView('admin-logs'); void loadAdminLogs('admin'); }}>Admin Logs</button>
-            {adminRole === 'owner' && <button className="admin-menu-card" style={styles.secondaryButton} onClick={() => { setAdminSectionView('security-logs'); void loadAdminLogs('security'); }}>Security Audit</button>}
-            <button className="admin-menu-card" style={styles.secondaryButton} onClick={() => { setAdminSectionView('data-export'); setDataTransferError(''); setDataTransferMessage(''); }}>Data Export</button>
-            <button className="admin-menu-card" style={styles.secondaryButton} onClick={() => { setAdminSectionView('data-import'); setDataTransferError(''); setDataTransferMessage(''); void loadDataBackups(); }}>Data Import</button>
+            <button className="admin-menu-card" style={styles.secondaryButton} onClick={() => { setAdminSectionView('overview'); void refreshAdminStatus(); scrollToAdminContent(); }}>Overview</button>
+            {adminRole === 'owner' && <button className="admin-menu-card" style={styles.secondaryButton} onClick={() => { setAdminSectionView('admins'); void loadAdminUsers(); scrollToAdminContent(); }}>Manage Admins</button>}
+            <button className="admin-menu-card" style={styles.secondaryButton} onClick={() => { setAdminSectionView('moderator-logs'); void loadAdminLogs('moderator'); scrollToAdminContent(); }}>Moderator Logs</button>
+            <button className="admin-menu-card" style={styles.secondaryButton} onClick={() => { setAdminSectionView('admin-logs'); void loadAdminLogs('admin'); scrollToAdminContent(); }}>Admin Logs</button>
+            {adminRole === 'owner' && <button className="admin-menu-card" style={styles.secondaryButton} onClick={() => { setAdminSectionView('security-logs'); void loadAdminLogs('security'); scrollToAdminContent(); }}>Security Audit</button>}
+            <button className="admin-menu-card" style={styles.secondaryButton} onClick={() => { setAdminSectionView('data-export'); setDataTransferError(''); setDataTransferMessage(''); setDataExportDownload(null); scrollToAdminContent(); }}>Data Export</button>
+            <button className="admin-menu-card" style={styles.secondaryButton} onClick={() => { setAdminSectionView('data-import'); setDataTransferError(''); setDataTransferMessage(''); void loadDataBackups(); scrollToAdminContent(); }}>Data Import</button>
           </div>
           {adminSectionView === 'overview' && (
-            <div style={{ ...styles.card, display: 'grid', gap: '12px' }}>
+            <div id="admin-section-content" style={{ ...styles.card, display: 'grid', gap: '12px', scrollMarginTop: '16px' }}>
               <h2 style={{ margin: 0 }}>Log overview</h2>
               <p style={{ margin: 0 }}>Moderator logs: {adminStatus.moderatorLogCount.toLocaleString()}</p>
               <p style={{ margin: 0 }}>Admin logs: {adminStatus.adminLogCount.toLocaleString()}</p>
@@ -2890,7 +2912,7 @@ export const App = () => {
             </div>
           )}
           {adminSectionView === 'data-export' && (
-            <div style={{ ...styles.card, display: 'grid', gap: '14px' }}>
+            <div id="admin-section-content" style={{ ...styles.card, display: 'grid', gap: '14px', scrollMarginTop: '16px' }}>
               <h2 style={{ margin: 0 }}>Export App Data</h2>
               <p style={styles.muted}>Download selected records as a ZIP containing CSV files and JSON metadata. Reddit voter IDs are never included; individual ratings remain anonymous.</p>
               <label style={styles.label}>Dataset</label>
@@ -2910,11 +2932,11 @@ export const App = () => {
               {dataTransferMessage && <p role="status" style={{ color: '#8de0ad', margin: 0 }}>{dataTransferMessage}</p>}
               <p style={styles.muted}>ZIP files are limited to 4.5 MB to stay below the app request-size constraints. If an export is too large, export smaller datasets separately.</p>
               <button type="button" style={styles.button} onClick={() => void exportDataArchive()} disabled={dataTransferBusy}>{dataTransferBusy ? 'Preparing ZIP...' : 'Prepare ZIP Export'}</button>
-              {dataExportDownload && <a href={dataExportDownload.url} download={dataExportDownload.filename} style={{ ...styles.button, display: 'block', textAlign: 'center', textDecoration: 'none', marginTop: '8px' }}>Tap to Save {dataExportDownload.filename}</a>}
+              {dataExportDownload && <><button type="button" style={styles.button} onClick={() => void shareDataExport()}>Share / Save ZIP</button><a href={dataExportDownload.url} download={dataExportDownload.filename} style={{ ...styles.button, display: 'block', textAlign: 'center', textDecoration: 'none', marginTop: '8px' }}>Download ZIP: {dataExportDownload.filename}</a></>}
             </div>
           )}
           {adminSectionView === 'data-import' && (
-            <div style={{ ...styles.card, display: 'grid', gap: '14px' }}>
+            <div id="admin-section-content" style={{ ...styles.card, display: 'grid', gap: '14px', scrollMarginTop: '16px' }}>
               <h2 style={{ margin: 0 }}>Import App Data</h2>
               <p style={styles.muted}>Only ZIP archives exported by Faculty Ratings schema version 1 are accepted. Uploads are limited to 4.5 MB; the archive is validated before any records are changed.</p>
               <label style={styles.label}>Import Mode</label>
