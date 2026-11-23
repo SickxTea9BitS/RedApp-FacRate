@@ -2915,7 +2915,7 @@ export const App = () => {
           {adminSectionView === 'data-export' && (
             <div id="admin-section-content" style={{ ...styles.card, display: 'grid', gap: '14px', scrollMarginTop: '16px' }}>
               <h2 style={{ margin: 0 }}>Export App Data</h2>
-              <p style={styles.muted}>Download selected records as a ZIP containing CSV files and JSON metadata. Reddit voter IDs are never included; individual ratings remain anonymous.</p>
+              <p style={styles.muted}>Copy selected records as portable JSON. Reddit voter IDs are never included; individual ratings remain anonymous.</p>
               <label style={styles.label}>Dataset</label>
               <select style={styles.input} value={dataExportType} onChange={event => { setDataExportType(event.target.value as typeof dataExportType); setFacultyCourseDataOnly(false); }}>
                 <option value="faculty">Faculty Data</option>
@@ -2931,9 +2931,12 @@ export const App = () => {
               )}
               {dataTransferError && <p role="alert" style={{ color: '#ffb3b3', margin: 0 }}>{dataTransferError}</p>}
               {dataTransferMessage && <p role="status" style={{ color: '#8de0ad', margin: 0 }}>{dataTransferMessage}</p>}
-              <p style={styles.muted}>ZIP files are limited to 4.5 MB to stay below the app request-size constraints. If an export is too large, export smaller datasets separately.</p>
-              <button type="button" style={styles.button} onClick={() => void exportDataArchive()} disabled={dataTransferBusy}>{dataTransferBusy ? 'Preparing ZIP...' : 'Prepare ZIP Export'}</button>
-              {dataExportDownload && <><button type="button" style={styles.button} onClick={() => void shareDataExport()}>Share / Save ZIP</button><a href={dataExportDownload.url} download={dataExportDownload.filename} style={{ ...styles.button, display: 'block', textAlign: 'center', textDecoration: 'none', marginTop: '8px' }}>Download ZIP: {dataExportDownload.filename}</a></>}
+              <button type="button" style={styles.button} onClick={() => void exportDataArchive()} disabled={dataTransferBusy}>{dataTransferBusy ? 'Preparing JSON...' : 'Copy JSON Export'}</button>
+              {exportedJsonText && <div style={{ display: 'grid', gap: '8px' }}>
+                <button type="button" style={styles.secondaryButton} onClick={() => void navigator.clipboard.writeText(exportedJsonText).then(() => setDataTransferMessage('JSON copied to clipboard.')).catch(() => setDataTransferError('Clipboard access was blocked. Copy the JSON manually from the text box.'))}>Copy Again</button>
+                <label style={styles.label}>Export JSON (manual copy fallback)</label>
+                <textarea style={{ ...styles.input, minHeight: '180px', fontFamily: 'monospace', fontSize: '0.8rem' }} readOnly value={exportedJsonText} onFocus={event => event.currentTarget.select()} />
+              </div>}
             </div>
           )}
           {adminSectionView === 'data-import' && (
