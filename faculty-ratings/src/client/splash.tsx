@@ -3015,7 +3015,7 @@ export const App = () => {
             </div>
           )}
           {adminSectionView === 'admins' && adminRole === 'owner' && (
-            <div style={{ display: 'grid', gap: '12px' }}>
+            <div id="admin-section-content" style={{ display: 'grid', gap: '12px', scrollMarginTop: '16px' }}>
               <form onSubmit={addAdminUser} style={{ ...styles.card, display: 'grid', gap: '10px' }}>
                 <h2 style={{ margin: 0 }}>Add Approved Admin</h2>
                 <label style={styles.label}>Reddit User ID</label><input style={styles.input} value={adminTargetId} onChange={e => setAdminTargetId(e.target.value)} placeholder="Reddit user ID" required />
@@ -3029,7 +3029,7 @@ export const App = () => {
             </div>
           )}
           {(adminSectionView === 'moderator-logs' || adminSectionView === 'admin-logs' || adminSectionView === 'security-logs') && (
-            <div style={{ display: 'grid', gap: '10px' }}>
+            <div id="admin-section-content" style={{ display: 'grid', gap: '10px', scrollMarginTop: '16px' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '10px' }}>
                 <h2 style={{ margin: 0 }}>{adminSectionView === 'moderator-logs' ? 'Moderator Logs' : adminSectionView === 'admin-logs' ? 'Admin Logs' : 'Protected Security Audit'}</h2>
                 <span style={styles.muted}>{adminLogTotal.toLocaleString()} entries</span>
