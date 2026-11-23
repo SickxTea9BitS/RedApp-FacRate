@@ -288,6 +288,27 @@ const validRatingRow = (row: CsvRow) => {
     /^\\d{1,16}$/.test(row.created_at ?? '');
 };
 
+const jsonExportToZip = (value: unknown, mode: ImportMode) => {
+  if (!value || typeof value !== 'object') throw new Error('JSON must contain a Faculty Ratings export object.');
+  const payload = value as { format?: unknown; schemaVersion?: unknown; data?: unknown; exportedAt?: unknown };
+  if (payload.format !== 'faculty-ratings-json-export' || payload.schemaVersion !== 1 || !payload.data || typeof payload.data !== 'object') throw new Error('Unsupported JSON export. Use a Faculty Ratings JSON export with schema version 1.');
+  const data = payload.data as Record<string, unknown>;
+  const headers = { faculties: ['faculty_id', 'first_name', 'middle_name', 'last_name', 'school'], courses: ['course_code'], assignments: ['faculty_id', 'course_code'], ratings: ['faculty_id', 'teaching', 'internal_marking', 'exam_evaluation', 'overall_recommendation', 'class_average', 'question_provision', 'created_at'] };
+  const required: Record<ImportMode, string[]> = { faculty: ['faculties'], 'faculty-courses': ['faculties', 'assignments'], courses: ['courses'], ratings: ['faculties', 'ratings'], all: ['faculties', 'courses', 'assignments', 'ratings'] };
+  for (const key of required[mode]) if (!Array.isArray(data[key])) throw new Error('JSON is missing the required data array: ' + key + '.');
+  const files: Record<string, string> = {};
+  const names = { faculties: 'faculties.csv', courses: 'courses.csv', assignments: 'faculty_course_assignments.csv', ratings: 'ratings.csv' };
+  for (const key of Object.keys(headers) as Array<keyof typeof headers>) {
+    const rows = Array.isArray(data[key]) ? data[key] as unknown[] : [];
+    if (rows.some(row => !row || typeof row !== 'object' || Array.isArray(row))) throw new Error('JSON data.' + key + ' must contain objects.');
+    const normalized = rows.map(row => { const record = row as Record<string, unknown>; return Object.fromEntries(headers[key].map(header => [header, String(record[header] ?? '')])); });
+    files[names[key]] = toCsv(normalized, headers[key]);
+  }
+  const exportedAt = typeof payload.exportedAt === 'string' ? payload.exportedAt : new Date().toISOString();
+  files['metadata.json'] = JSON.stringify({ schemaVersion: 1, appVersion: '1.1.0', exportedAt, sourceSubreddit: 'json-import', dataset: mode, counts: {} });
+  files['manifest.json'] = JSON.stringify({ format: 'faculty-ratings-export', schemaVersion: 1, exportedAt, files: Object.keys(files).sort(), notes: ['Reddit voter IDs are intentionally excluded.', 'Imported ratings are anonymous individual records.'] });
+  return createZip(files);
+};
 const readImportArchive = async (form: FormData) => {
   const mode = String(form.get('mode') ?? '') as ImportMode;
   let upload = form.get('file');
