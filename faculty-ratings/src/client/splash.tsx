@@ -1095,7 +1095,7 @@ export const App = () => {
   const scrollToAdminContent = () => {
     window.setTimeout(() => {
       document.getElementById('admin-section-content')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    }, 80);
+    }, 220);
   };
 
   const openAdminDashboard = () => {
@@ -2230,7 +2230,7 @@ export const App = () => {
             </p>
 
             {adminSection === 'menu' && (
-              <div className="admin-menu-grid" style={{ display: 'grid', gap: '14px', marginTop: '22px' }}>
+              <div className="admin-menu-grid" style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr)', gap: '12px', marginTop: '22px' }}>
                 <button type="button" className="admin-menu-card" style={{ ...styles.card, cursor: 'pointer', textAlign: 'left', padding: '22px', display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: '9px', minHeight: '126px' }} onClick={() => { setAdminSection('faculty-requests'); void loadModeratorRequests(); }}>
                   <strong style={{ fontSize: '1.1rem' }}>Pending Faculty Requests</strong>
                   <span style={{ ...styles.muted, marginTop: '7px' }}>{moderatorRequests.length ? `${moderatorRequests.length} pending request(s)` : 'No pending requests'}</span>
@@ -2254,7 +2254,7 @@ export const App = () => {
             )}
 
             {adminSection === 'manage-menu' && (
-              <div className="admin-menu-grid" style={{ display: 'grid', gap: '14px', marginTop: '10px' }}>
+              <div className="admin-menu-grid" style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr)', gap: '12px', marginTop: '10px' }}>
                 <button type="button" className="admin-menu-card" style={{ ...styles.card, cursor: 'pointer', textAlign: 'left', padding: '20px', display: 'grid', gap: '8px' }} onClick={() => { setAdminSection('manage-faculty'); void loadAllFacultyForModeration(); }}>
                   <strong>Manage Faculty</strong><span style={styles.muted}>Edit or delete existing faculty members</span>
                 </button>
@@ -2906,7 +2906,7 @@ export const App = () => {
             <button className="admin-menu-card" style={styles.secondaryButton} onClick={() => { setAdminSectionView('moderator-logs'); void loadAdminLogs('moderator'); scrollToAdminContent(); }}>Moderator Logs</button>
             <button className="admin-menu-card" style={styles.secondaryButton} onClick={() => { setAdminSectionView('admin-logs'); void loadAdminLogs('admin'); scrollToAdminContent(); }}>Admin Logs</button>
             {adminRole === 'owner' && <button className="admin-menu-card" style={styles.secondaryButton} onClick={() => { setAdminSectionView('security-logs'); void loadAdminLogs('security'); scrollToAdminContent(); }}>Security Audit</button>}
-            <button className="admin-menu-card" style={styles.secondaryButton} onClick={() => { setAdminSectionView('data-export'); setDataTransferError(''); setDataTransferMessage(''); setDataExportDownload(null); scrollToAdminContent(); }}>Data Export</button>
+            <button className="admin-menu-card" style={styles.secondaryButton} onClick={() => { setAdminSectionView('data-export'); setDataTransferError(''); setDataTransferMessage(''); scrollToAdminContent(); }}>Data Export</button>
             <button className="admin-menu-card" style={styles.secondaryButton} onClick={() => { setAdminSectionView('data-import'); setDataTransferError(''); setDataTransferMessage(''); void loadDataBackups(); scrollToAdminContent(); }}>Data Import</button>
           </div>
           {adminSectionView === 'overview' && (
