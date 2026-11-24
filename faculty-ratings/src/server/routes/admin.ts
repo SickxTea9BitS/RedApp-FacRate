@@ -98,9 +98,10 @@ const readLogPage = async (key: string, page: number, pageSize: number) => {
 admin.get('/status', async (c) => {
   const actor = await requireAdmin();
   if (!actor) return c.json({ status: 'success' as const, role: 'none' as const });
-  const [moderatorLogCount, adminLogCount] = await Promise.all([
+  const [moderatorLogCount, adminLogCount, securityLogCount] = await Promise.all([
     redis.zCard(MOD_LOG_KEY),
     redis.zCard(ADMIN_LOG_KEY),
+    redis.zCard(SECURITY_LOG_KEY),
   ]);
   return c.json({
     status: 'success' as const,
@@ -110,11 +111,13 @@ admin.get('/status', async (c) => {
     canClearLogs: actor.role === 'owner',
     moderatorLogCount,
     adminLogCount,
+    ...(actor.role === 'owner' ? { securityLogCount } : {}),
     logWarningThreshold: LOG_WARNING_THRESHOLD,
     showLogWarning:
       actor.role === 'owner' &&
       (moderatorLogCount >= LOG_WARNING_THRESHOLD ||
-        adminLogCount >= LOG_WARNING_THRESHOLD),
+        adminLogCount >= LOG_WARNING_THRESHOLD ||
+        securityLogCount >= LOG_WARNING_THRESHOLD),
   });
 });
 

@@ -162,7 +162,7 @@ export const App = () => {
 
   const [isModerator, setIsModerator] = useState(false);
   const [adminRole, setAdminRole] = useState<'owner' | 'admin' | 'none'>('none');
-  const [adminSectionView, setAdminSectionView] = useState<'overview' | 'admins' | 'moderator-logs' | 'admin-logs' | 'security-logs'>('overview');
+  const [adminSectionView, setAdminSectionView] = useState<'overview' | 'admins' | 'moderator-logs' | 'admin-logs' | 'security-logs' | 'data-export' | 'data-import'>('overview');
   const [adminUsers, setAdminUsers] = useState<Array<{ id: string; username: string; addedAt: number }>>([]);
   const [pendingAdminRemoval, setPendingAdminRemoval] = useState<{ id: string; username: string } | null>(null);
   const [adminLogs, setAdminLogs] = useState<Array<{ id: string; actorUsername: string; action: string; timestamp: number; details: Record<string, unknown>; result: string }>>([]);
@@ -174,7 +174,28 @@ export const App = () => {
   const [adminError, setAdminError] = useState('');
   const [adminBusy, setAdminBusy] = useState(false);
   const [adminConfirmText, setAdminConfirmText] = useState('');
-  const [adminStatus, setAdminStatus] = useState<{ moderatorLogCount: number; adminLogCount: number; showLogWarning: boolean }>({ moderatorLogCount: 0, adminLogCount: 0, showLogWarning: false });
+  const [dataExportType, setDataExportType] = useState<'faculty' | 'courses' | 'ratings' | 'all'>('faculty');
+  const [includeFacultyAssignments, setIncludeFacultyAssignments] = useState(true);
+  const [facultyCourseDataOnly, setFacultyCourseDataOnly] = useState(false);
+  const [dataTransferBusy, setDataTransferBusy] = useState(false);
+  const [exportedJsonText, setExportedJsonText] = useState('');
+  const [dataTransferMessage, setDataTransferMessage] = useState('');
+  const [dataTransferError, setDataTransferError] = useState('');
+  const [dataImportMode, setDataImportMode] = useState<'faculty' | 'faculty-courses' | 'courses' | 'ratings' | 'all'>('faculty');
+  const [dataImportFile, setDataImportFile] = useState<File | null>(null);
+  const [importInputMethod, setImportInputMethod] = useState<'file' | 'paste'>('file');
+  const [pastedImportJson, setPastedImportJson] = useState('');
+  const [dataImportPreview, setDataImportPreview] = useState<{ mode: string; counts: Record<string, number>; missingCourses: string[]; ambiguousFacultyIds: string[]; ambiguousFacultyMatches: Array<{ sourceId: string; candidates: Array<{ facultyId: string; name: string; school: string }> }>; warnings: string[] } | null>(null);
+  const [selectedImportCourses, setSelectedImportCourses] = useState<string[]>([]);
+  const [facultyImportResolutions, setFacultyImportResolutions] = useState<Record<string, string>>({});
+  const [addMissingRatingFaculty, setAddMissingRatingFaculty] = useState(false);
+  const [importConfirmation, setImportConfirmation] = useState('');
+  const [finalImportConfirmation, setFinalImportConfirmation] = useState(false);
+  const [dataBackups, setDataBackups] = useState<Array<{ backupId: string; createdAt: number; actorId: string; facultyCount: number; courseCount: number }>>([]);
+  const [restoreBackupId, setRestoreBackupId] = useState('');
+  const [restoreConfirmation, setRestoreConfirmation] = useState('');
+  const [finalRestoreConfirmation, setFinalRestoreConfirmation] = useState(false);
+  const [adminStatus, setAdminStatus] = useState<{ moderatorLogCount: number; adminLogCount: number; securityLogCount: number; showLogWarning: boolean }>({ moderatorLogCount: 0, adminLogCount: 0, securityLogCount: 0, showLogWarning: false });
   const [moderatorCheckLoading, setModeratorCheckLoading] = useState(true);
   const [moderatorRequests, setModeratorRequests] = useState<FacultyRequest[]>(
     []
@@ -268,10 +289,10 @@ export const App = () => {
     const checkAdmin = async () => {
       try {
         const response = await fetch('/api/admin/status');
-        const result = await response.json() as { status: string; role?: 'owner' | 'admin' | 'none'; moderatorLogCount?: number; adminLogCount?: number; showLogWarning?: boolean };
+        const result = await response.json() as { status: string; role?: 'owner' | 'admin' | 'none'; moderatorLogCount?: number; adminLogCount?: number; securityLogCount?: number; showLogWarning?: boolean };
         if (active && response.ok && result.status === 'success') {
           setAdminRole(result.role ?? 'none');
-          setAdminStatus({ moderatorLogCount: result.moderatorLogCount ?? 0, adminLogCount: result.adminLogCount ?? 0, showLogWarning: Boolean(result.showLogWarning) });
+          setAdminStatus({ moderatorLogCount: result.moderatorLogCount ?? 0, adminLogCount: result.adminLogCount ?? 0, securityLogCount: result.securityLogCount ?? 0, showLogWarning: Boolean(result.showLogWarning) });
         }
       } catch { if (active) setAdminRole('none'); }
     };
@@ -900,7 +921,7 @@ export const App = () => {
       const result = await response.json();
       if (!response.ok || result.status !== 'success') throw new Error(result.message || 'Unable to load admin status.');
       setAdminRole(result.role ?? 'none');
-      setAdminStatus({ moderatorLogCount: result.moderatorLogCount ?? 0, adminLogCount: result.adminLogCount ?? 0, showLogWarning: Boolean(result.showLogWarning) });
+      setAdminStatus({ moderatorLogCount: result.moderatorLogCount ?? 0, adminLogCount: result.adminLogCount ?? 0, securityLogCount: result.securityLogCount ?? 0, showLogWarning: Boolean(result.showLogWarning) });
     } catch (error) {
       setAdminError(error instanceof Error ? error.message : 'Unable to load admin status.');
     }
@@ -972,6 +993,109 @@ export const App = () => {
       const url = URL.createObjectURL(blob);
       const link = document.createElement('a'); link.href = url; link.download = 'faculty-ratings-logs.json'; link.click(); URL.revokeObjectURL(url);
     } catch (error) { setAdminError(error instanceof Error ? error.message : 'Unable to export logs.'); }
+  };
+
+  const loadDataBackups = async () => {
+    setDataTransferBusy(true); setDataTransferError('');
+    try {
+      const response = await fetch('/api/admin/data/backups'); const result = await response.json();
+      if (!response.ok || result.status !== 'success') throw new Error(result.message || 'Unable to load recovery backups.');
+      setDataBackups(result.backups ?? []);
+    } catch (error) { setDataTransferError(error instanceof Error ? error.message : 'Unable to load recovery backups.'); }
+    finally { setDataTransferBusy(false); }
+  };
+
+  const restoreDataBackup = async () => {
+    if (!restoreBackupId || restoreConfirmation !== 'RESTORE' || !finalRestoreConfirmation) return;
+    setDataTransferBusy(true); setDataTransferError(''); setDataTransferMessage('');
+    try {
+      const response = await fetch('/api/admin/data/backups/' + encodeURIComponent(restoreBackupId) + '/restore', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ confirmation: restoreConfirmation, finalConfirmation: finalRestoreConfirmation }) });
+      const result = await response.json();
+      if (!response.ok || result.status !== 'success') throw new Error(result.message || 'Unable to restore backup.');
+      setDataTransferMessage(result.message); setRestoreBackupId(''); setRestoreConfirmation(''); setFinalRestoreConfirmation(false); await loadDataBackups();
+    } catch (error) { setDataTransferError(error instanceof Error ? error.message : 'Unable to restore backup.'); }
+    finally { setDataTransferBusy(false); }
+  };
+
+  const previewImportFile = async (file: File) => {
+    setDataImportFile(file); setDataTransferBusy(true); setDataTransferError(''); setDataTransferMessage(''); setDataImportPreview(null);
+    try {
+      const form = new FormData(); form.append('file', file); form.append('mode', dataImportMode);
+      const response = await fetch('/api/admin/data/import/preview', { method: 'POST', body: form });
+      const result = await response.json();
+      if (!response.ok || result.status !== 'success') throw new Error(result.message || 'Unable to validate JSON import.');
+      setDataImportPreview(result); setSelectedImportCourses(result.missingCourses ?? []); setFacultyImportResolutions({}); setImportConfirmation(''); setFinalImportConfirmation(false);
+      setDataTransferMessage('JSON format is valid. Review the preview before updating data.');
+    } catch (error) { setDataTransferError(error instanceof Error ? error.message : 'Unable to validate JSON import.'); }
+    finally { setDataTransferBusy(false); }
+  };
+
+  const previewDataImport = async () => {
+    if (!dataImportFile) { setDataTransferError('Choose a JSON file first.'); return; }
+    await previewImportFile(dataImportFile);
+  };
+
+  const pasteImportFromClipboard = async () => {
+    setDataTransferError(''); setDataTransferMessage('');
+    try {
+      const text = await navigator.clipboard.readText();
+      if (!text.trim()) throw new Error('Clipboard is empty. Copy a JSON export first.');
+      setPastedImportJson(text);
+      const file = new File([text], 'clipboard-import.json', { type: 'application/json' });
+      await previewImportFile(file);
+    } catch (error) {
+      setDataTransferError(error instanceof Error ? error.message : 'Unable to read clipboard. Paste the JSON into the text box instead.');
+    }
+  };
+
+  const validatePastedImport = async () => {
+    if (!pastedImportJson.trim()) { setDataTransferError('Paste JSON data first.'); return; }
+    const file = new File([pastedImportJson], 'pasted-import.json', { type: 'application/json' });
+    await previewImportFile(file);
+  };
+
+  const applyDataImport = async () => {
+    if (!dataImportFile || !dataImportPreview) return;
+    if (dataImportMode === 'all' && (importConfirmation !== 'CONFIRM' || !finalImportConfirmation)) {
+      setDataTransferError('Full replacement requires typing CONFIRM and checking the final confirmation.'); return;
+    }
+    setDataTransferBusy(true); setDataTransferError(''); setDataTransferMessage('');
+    try {
+      const form = new FormData(); form.append('file', dataImportFile); form.append('mode', dataImportMode);
+      form.append('options', JSON.stringify({ selectedCourses: selectedImportCourses, addMissingFaculty: addMissingRatingFaculty, facultyResolutions: facultyImportResolutions, confirmation: importConfirmation, finalConfirmation: finalImportConfirmation }));
+      const response = await fetch('/api/admin/data/import/apply', { method: 'POST', body: form });
+      const result = await response.json();
+      if (!response.ok || result.status !== 'success') throw new Error(result.message || 'Import failed.');
+      setDataTransferMessage(result.message || 'Import completed.'); setDataImportPreview(null); setDataImportFile(null); setImportConfirmation(''); setFinalImportConfirmation(false); if (dataImportMode === 'all') await loadDataBackups();
+      const fileInput = document.getElementById('data-import-file') as HTMLInputElement | null; if (fileInput) fileInput.value = '';
+    } catch (error) { setDataTransferError(error instanceof Error ? error.message : 'Import failed.'); }
+    finally { setDataTransferBusy(false); }
+  };
+
+  const exportDataArchive = async () => {
+    setDataTransferBusy(true); setDataTransferError(''); setDataTransferMessage(''); setExportedJsonText('');
+    try {
+      const type = facultyCourseDataOnly ? 'faculty-courses' : dataExportType;
+      const query = new URLSearchParams({ type, includeAssignments: String(includeFacultyAssignments) });
+      const response = await fetch('/api/admin/data/export/json?' + query.toString());
+      const result = await response.json();
+      if (!response.ok || result.status === 'error') throw new Error(result.message || 'Unable to export JSON data.');
+      const jsonText = JSON.stringify(result, null, 2);
+      setExportedJsonText(jsonText);
+      try {
+        await navigator.clipboard.writeText(jsonText);
+        setDataTransferMessage('JSON export copied to clipboard. You can paste it into a .json file or another app.');
+      } catch {
+        setDataTransferMessage('JSON export is ready below. Clipboard access was blocked; select and copy the JSON manually.');
+      }
+    } catch (error) { setDataTransferError(error instanceof Error ? error.message : 'Unable to export JSON data.'); }
+    finally { setDataTransferBusy(false); }
+  };
+
+  const scrollToAdminContent = () => {
+    window.setTimeout(() => {
+      document.getElementById('admin-section-content')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, 220);
   };
 
   const openAdminDashboard = () => {
@@ -2106,7 +2230,7 @@ export const App = () => {
             </p>
 
             {adminSection === 'menu' && (
-              <div className="admin-menu-grid" style={{ display: 'grid', gap: '14px', marginTop: '22px' }}>
+              <div className="admin-menu-grid" style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr)', gap: '12px', marginTop: '22px' }}>
                 <button type="button" className="admin-menu-card" style={{ ...styles.card, cursor: 'pointer', textAlign: 'left', padding: '22px', display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: '9px', minHeight: '126px' }} onClick={() => { setAdminSection('faculty-requests'); void loadModeratorRequests(); }}>
                   <strong style={{ fontSize: '1.1rem' }}>Pending Faculty Requests</strong>
                   <span style={{ ...styles.muted, marginTop: '7px' }}>{moderatorRequests.length ? `${moderatorRequests.length} pending request(s)` : 'No pending requests'}</span>
@@ -2130,7 +2254,7 @@ export const App = () => {
             )}
 
             {adminSection === 'manage-menu' && (
-              <div className="admin-menu-grid" style={{ display: 'grid', gap: '14px', marginTop: '10px' }}>
+              <div className="admin-menu-grid" style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr)', gap: '12px', marginTop: '10px' }}>
                 <button type="button" className="admin-menu-card" style={{ ...styles.card, cursor: 'pointer', textAlign: 'left', padding: '20px', display: 'grid', gap: '8px' }} onClick={() => { setAdminSection('manage-faculty'); void loadAllFacultyForModeration(); }}>
                   <strong>Manage Faculty</strong><span style={styles.muted}>Edit or delete existing faculty members</span>
                 </button>
@@ -2776,24 +2900,145 @@ export const App = () => {
               <p>At least one log has reached 5,000 entries. Export the logs and clear the normal logs when appropriate. The protected security audit log is not cleared.</p>
             </div>
           )}
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
-            <button style={styles.secondaryButton} onClick={() => { setAdminSectionView('overview'); void refreshAdminStatus(); }}>Overview</button>
-            {adminRole === 'owner' && <button style={styles.secondaryButton} onClick={() => { setAdminSectionView('admins'); void loadAdminUsers(); }}>Manage Admins</button>}
-            <button style={styles.secondaryButton} onClick={() => { setAdminSectionView('moderator-logs'); void loadAdminLogs('moderator'); }}>Moderator Logs</button>
-            <button style={styles.secondaryButton} onClick={() => { setAdminSectionView('admin-logs'); void loadAdminLogs('admin'); }}>Admin Logs</button>
-            {adminRole === 'owner' && <button style={styles.secondaryButton} onClick={() => { setAdminSectionView('security-logs'); void loadAdminLogs('security'); }}>Security Audit</button>}
+          <div className="admin-menu-grid">
+            <button className="admin-menu-card" style={styles.secondaryButton} onClick={() => { setAdminSectionView('overview'); void refreshAdminStatus(); scrollToAdminContent(); }}>Overview</button>
+            {adminRole === 'owner' && <button className="admin-menu-card" style={styles.secondaryButton} onClick={() => { setAdminSectionView('admins'); void loadAdminUsers(); scrollToAdminContent(); }}>Manage Admins</button>}
+            <button className="admin-menu-card" style={styles.secondaryButton} onClick={() => { setAdminSectionView('moderator-logs'); void loadAdminLogs('moderator'); scrollToAdminContent(); }}>Moderator Logs</button>
+            <button className="admin-menu-card" style={styles.secondaryButton} onClick={() => { setAdminSectionView('admin-logs'); void loadAdminLogs('admin'); scrollToAdminContent(); }}>Admin Logs</button>
+            {adminRole === 'owner' && <button className="admin-menu-card" style={styles.secondaryButton} onClick={() => { setAdminSectionView('security-logs'); void loadAdminLogs('security'); scrollToAdminContent(); }}>Security Audit</button>}
+            <button className="admin-menu-card" style={styles.secondaryButton} onClick={() => { setAdminSectionView('data-export'); setDataTransferError(''); setDataTransferMessage(''); scrollToAdminContent(); }}>Data Export</button>
+            <button className="admin-menu-card" style={styles.secondaryButton} onClick={() => { setAdminSectionView('data-import'); setDataTransferError(''); setDataTransferMessage(''); void loadDataBackups(); scrollToAdminContent(); }}>Data Import</button>
           </div>
           {adminSectionView === 'overview' && (
-            <div style={{ ...styles.card, display: 'grid', gap: '12px' }}>
+            <div id="admin-section-content" style={{ ...styles.card, display: 'grid', gap: '12px', scrollMarginTop: '16px' }}>
               <h2 style={{ margin: 0 }}>Log overview</h2>
               <p style={{ margin: 0 }}>Moderator logs: {adminStatus.moderatorLogCount.toLocaleString()}</p>
               <p style={{ margin: 0 }}>Admin logs: {adminStatus.adminLogCount.toLocaleString()}</p>
+              {adminRole === 'owner' && <p style={{ margin: 0 }}>Protected security audit: {adminStatus.securityLogCount.toLocaleString()}</p>}
               <p style={styles.muted}>Logs are retained until the owner clears them. The security audit log is retained separately and is never removed by normal log clearing.</p>
               {adminRole === 'owner' && <button style={styles.secondaryButton} onClick={() => void exportAdminLogs()}>Export Logs (JSON)</button>}
             </div>
           )}
+          {adminSectionView === 'data-export' && (
+            <div id="admin-section-content" style={{ ...styles.card, display: 'grid', gap: '14px', scrollMarginTop: '16px' }}>
+              <h2 style={{ margin: 0 }}>Export App Data</h2>
+              <p style={styles.muted}>Copy selected records as portable JSON. Reddit voter IDs are never included; individual ratings remain anonymous.</p>
+              <label style={styles.label}>Dataset</label>
+              <select style={styles.input} value={dataExportType} onChange={event => { setDataExportType(event.target.value as typeof dataExportType); setFacultyCourseDataOnly(false); }}>
+                <option value="faculty">Faculty Data</option>
+                <option value="courses">Course List</option>
+                <option value="ratings">Faculty Ratings</option>
+                <option value="all">All Data</option>
+              </select>
+              {dataExportType === 'faculty' && (
+                <>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '9px' }}><input type="checkbox" checked={includeFacultyAssignments && !facultyCourseDataOnly} disabled={facultyCourseDataOnly} onChange={event => setIncludeFacultyAssignments(event.target.checked)} /> Include Faculty Course Assignments</label>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '9px' }}><input type="checkbox" checked={facultyCourseDataOnly} onChange={event => setFacultyCourseDataOnly(event.target.checked)} /> Faculty Course Data Only (faculty details and assigned course codes)</label>
+                </>
+              )}
+              {dataTransferError && <p role="alert" style={{ color: '#ffb3b3', margin: 0 }}>{dataTransferError}</p>}
+              {dataTransferMessage && <p role="status" style={{ color: '#8de0ad', margin: 0 }}>{dataTransferMessage}</p>}
+              <button type="button" style={styles.button} onClick={() => void exportDataArchive()} disabled={dataTransferBusy}>{dataTransferBusy ? 'Preparing JSON...' : 'Copy JSON Export'}</button>
+              {exportedJsonText && <div style={{ display: 'grid', gap: '8px' }}>
+                <button type="button" style={styles.secondaryButton} onClick={() => void navigator.clipboard.writeText(exportedJsonText).then(() => setDataTransferMessage('JSON copied to clipboard.')).catch(() => setDataTransferError('Clipboard access was blocked. Copy the JSON manually from the text box.'))}>Copy Again</button>
+                <label style={styles.label}>Export JSON (manual copy fallback)</label>
+                <textarea style={{ ...styles.input, minHeight: '180px', fontFamily: 'monospace', fontSize: '0.8rem' }} readOnly value={exportedJsonText} onFocus={event => event.currentTarget.select()} />
+              </div>}
+            </div>
+          )}
+          {adminSectionView === 'data-import' && (
+            <div id="admin-section-content" style={{ ...styles.card, display: 'grid', gap: '14px', scrollMarginTop: '16px' }}>
+              <h2 style={{ margin: 0 }}>Import App Data</h2>
+              <p style={styles.muted}>Import a Faculty Ratings JSON export. The data is validated before the Update Data button becomes available. No records are changed during validation.</p>
+              <label style={styles.label}>Import Mode</label>
+              <select style={styles.input} value={dataImportMode} onChange={event => { setDataImportMode(event.target.value as typeof dataImportMode); setDataImportPreview(null); }}>
+                <option value="faculty">Faculty Data</option>
+                <option value="faculty-courses">Faculty Course Details Only</option>
+                <option value="courses">Course List</option>
+                <option value="ratings">Faculty Ratings (Anonymous)</option>
+                <option value="all">All Data (Full Replacement)</option>
+              </select>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: '8px' }}>
+                <button type="button" style={importInputMethod === 'file' ? styles.button : styles.secondaryButton} onClick={() => { setImportInputMethod('file'); setDataImportPreview(null); setDataTransferError(''); }}>Import using Json file</button>
+                <button type="button" style={importInputMethod === 'paste' ? styles.button : styles.secondaryButton} onClick={() => { setImportInputMethod('paste'); setDataImportPreview(null); setDataTransferError(''); void pasteImportFromClipboard(); }}>Paste data</button>
+              </div>
+              {importInputMethod === 'file' && <>
+                <label style={styles.label}>JSON Export File</label>
+                <input id="data-import-file" style={styles.input} type="file" accept=".json,application/json" onChange={event => { setDataImportFile(event.target.files?.[0] ?? null); setDataImportPreview(null); setDataTransferError(''); }} />
+                <button type="button" style={styles.secondaryButton} onClick={() => void previewDataImport()} disabled={dataTransferBusy || !dataImportFile}>{dataTransferBusy ? 'Validating...' : 'Validate JSON'}</button>
+              </>}
+              {importInputMethod === 'paste' && <>
+                <label style={styles.label}>Paste JSON Export</label>
+                <textarea style={{ ...styles.input, minHeight: '180px', fontFamily: 'monospace', fontSize: '0.8rem' }} value={pastedImportJson} onChange={event => { setPastedImportJson(event.target.value); setDataImportPreview(null); setDataTransferError(''); }} placeholder="JSON from clipboard will appear here. You can also paste manually." />
+                <button type="button" style={styles.secondaryButton} onClick={() => void pasteImportFromClipboard()} disabled={dataTransferBusy}>Read Clipboard & Validate</button>
+                <button type="button" style={styles.secondaryButton} onClick={() => void validatePastedImport()} disabled={dataTransferBusy || !pastedImportJson.trim()}>Validate Pasted JSON</button>
+              </>}
+              <div style={{ borderTop: '1px solid #56618d', paddingTop: '14px', display: 'grid', gap: '10px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+                  <h3 style={{ margin: 0 }}>Recovery Backups</h3>
+                  <button type="button" style={styles.secondaryButton} onClick={() => void loadDataBackups()} disabled={dataTransferBusy}>Refresh Backups</button>
+                </div>
+                <p style={styles.muted}>Full replacements automatically create retained backups. Restoring one first creates a backup of the current data.</p>
+                {dataBackups.map(backup => <article key={backup.backupId} style={{ ...styles.card, display: 'grid', gap: '7px' }}>
+                  <strong>{new Date(backup.createdAt).toLocaleString()}</strong>
+                  <span style={styles.muted}>{backup.facultyCount} faculty · {backup.courseCount} courses · Backup {backup.backupId}</span>
+                  <button type="button" style={{ ...styles.secondaryButton, borderColor: '#d89a37', color: '#ffd58a' }} onClick={() => { setRestoreBackupId(backup.backupId); setRestoreConfirmation(''); setFinalRestoreConfirmation(false); }}>Prepare Restore</button>
+                </article>)}
+                {!dataBackups.length && <p style={styles.muted}>No recovery backups are currently available.</p>}
+                {restoreBackupId && (
+                  <div style={{ border: '1px solid #b83232', borderRadius: '10px', padding: '12px', display: 'grid', gap: '9px' }}>
+                    <strong style={{ color: '#ffaaaa' }}>Restore selected backup?</strong>
+                    <p style={styles.muted}>This replaces the current faculty, course and rating datasets with the selected backup. Admins, owner identity, security settings and logs are preserved.</p>
+                    <label style={styles.label}>Type RESTORE</label>
+                    <input style={styles.input} value={restoreConfirmation} onChange={event => setRestoreConfirmation(event.target.value)} placeholder="RESTORE" />
+                    <label style={{ display: 'flex', alignItems: 'center', gap: '8px' }}><input type="checkbox" checked={finalRestoreConfirmation} onChange={event => setFinalRestoreConfirmation(event.target.checked)} /> I understand this replaces the current data.</label>
+                    <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                      <button type="button" style={styles.secondaryButton} onClick={() => setRestoreBackupId('')}>Cancel</button>
+                      <button type="button" style={{ ...styles.button, backgroundColor: '#a63838' }} disabled={dataTransferBusy || restoreConfirmation !== 'RESTORE' || !finalRestoreConfirmation} onClick={() => void restoreDataBackup()}>{dataTransferBusy ? 'Restoring...' : 'Restore Backup'}</button>
+                    </div>
+                  </div>
+                )}
+              </div>
+              {dataImportPreview && (
+                <div style={{ borderTop: '1px solid #56618d', paddingTop: '14px', display: 'grid', gap: '10px' }}>
+                  <h3 style={{ margin: 0 }}>Import Preview</h3>
+                  {Object.entries(dataImportPreview.counts).map(([label, value]) => <p key={label} style={{ margin: 0 }}>{label.replace(/([A-Z])/g, ' $1')}: <strong>{value.toLocaleString()}</strong></p>)}
+                  {dataImportPreview.warnings.map(warning => <p key={warning} style={{ color: '#ffd58a', margin: 0 }}>{warning}</p>)}
+                  {dataImportPreview.missingCourses.length > 0 && (
+                    <div style={{ display: 'grid', gap: '7px' }}>
+                      <strong>Missing courses — selected by default</strong>
+                      <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                        <button type="button" style={styles.secondaryButton} onClick={() => setSelectedImportCourses(dataImportPreview.missingCourses)}>Select All</button>
+                        <button type="button" style={styles.secondaryButton} onClick={() => setSelectedImportCourses([])}>Unselect All</button>
+                      </div>
+                      {dataImportPreview.missingCourses.map(code => <label key={code} style={{ display: 'flex', alignItems: 'center', gap: '8px' }}><input type="checkbox" checked={selectedImportCourses.includes(code)} onChange={event => setSelectedImportCourses(current => event.target.checked ? [...current, code] : current.filter(item => item !== code))} />{code}</label>)}
+                    </div>
+                  )}
+                  {dataImportPreview.ambiguousFacultyMatches.length > 0 && (
+                    <div style={{ display: 'grid', gap: '10px' }}>
+                      <strong>Resolve ambiguous faculty matches</strong>
+                      {dataImportPreview.ambiguousFacultyMatches.map(item => <label key={item.sourceId} style={{ display: 'grid', gap: '6px' }}><span>{item.sourceId}</span><select style={styles.input} value={facultyImportResolutions[item.sourceId] ?? ''} onChange={event => setFacultyImportResolutions(current => ({ ...current, [item.sourceId]: event.target.value }))}><option value="">Choose destination faculty</option>{item.candidates.map(candidate => <option key={candidate.facultyId} value={candidate.facultyId}>{candidate.name} ({candidate.school}) — {candidate.facultyId}</option>)}</select></label>)}
+                    </div>
+                  )}
+                  {dataImportMode === 'ratings' && <label style={{ display: 'flex', alignItems: 'center', gap: '8px' }}><input type="checkbox" checked={addMissingRatingFaculty} onChange={event => setAddMissingRatingFaculty(event.target.checked)} /> Add faculty details when no matching destination faculty exists</label>}
+                  {dataImportMode === 'all' && (
+                    <div style={{ border: '1px solid #b83232', borderRadius: '10px', padding: '12px', display: 'grid', gap: '10px' }}>
+                      <strong style={{ color: '#ffaaaa' }}>Full replacement — destructive operation</strong>
+                      <p style={styles.muted}>This replaces faculty, courses, assignments and ratings. A backup is created first. Owner/admin access, security settings and all logs are preserved. Approved admins are permitted to run this operation.</p>
+                      <label style={styles.label}>Type CONFIRM</label>
+                      <input style={styles.input} value={importConfirmation} onChange={event => setImportConfirmation(event.target.value)} placeholder="CONFIRM" />
+                      <label style={{ display: 'flex', alignItems: 'center', gap: '8px' }}><input type="checkbox" checked={finalImportConfirmation} onChange={event => setFinalImportConfirmation(event.target.checked)} /> I understand this replaces the current app data.</label>
+                    </div>
+                  )}
+                  <button type="button" style={{ ...styles.button, backgroundColor: dataImportMode === 'all' ? '#a63838' : '#23834c' }} onClick={() => void applyDataImport()} disabled={dataTransferBusy || dataImportPreview.ambiguousFacultyMatches.some(item => !facultyImportResolutions[item.sourceId]) || (dataImportMode === 'all' && (importConfirmation !== 'CONFIRM' || !finalImportConfirmation))}>{dataTransferBusy ? 'Importing...' : dataImportMode === 'all' ? 'Confirm Full Replacement' : 'Update Data'}</button>
+                </div>
+              )}
+              {dataTransferError && <p role="alert" style={{ color: '#ffb3b3', margin: 0 }}>{dataTransferError}</p>}
+              {dataTransferMessage && <p role="status" style={{ color: '#8de0ad', margin: 0 }}>{dataTransferMessage}</p>}
+            </div>
+          )}
           {adminSectionView === 'admins' && adminRole === 'owner' && (
-            <div style={{ display: 'grid', gap: '12px' }}>
+            <div id="admin-section-content" style={{ display: 'grid', gap: '12px', scrollMarginTop: '16px' }}>
               <form onSubmit={addAdminUser} style={{ ...styles.card, display: 'grid', gap: '10px' }}>
                 <h2 style={{ margin: 0 }}>Add Approved Admin</h2>
                 <label style={styles.label}>Reddit User ID</label><input style={styles.input} value={adminTargetId} onChange={e => setAdminTargetId(e.target.value)} placeholder="Reddit user ID" required />
@@ -2807,7 +3052,7 @@ export const App = () => {
             </div>
           )}
           {(adminSectionView === 'moderator-logs' || adminSectionView === 'admin-logs' || adminSectionView === 'security-logs') && (
-            <div style={{ display: 'grid', gap: '10px' }}>
+            <div id="admin-section-content" style={{ display: 'grid', gap: '10px', scrollMarginTop: '16px' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '10px' }}>
                 <h2 style={{ margin: 0 }}>{adminSectionView === 'moderator-logs' ? 'Moderator Logs' : adminSectionView === 'admin-logs' ? 'Admin Logs' : 'Protected Security Audit'}</h2>
                 <span style={styles.muted}>{adminLogTotal.toLocaleString()} entries</span>

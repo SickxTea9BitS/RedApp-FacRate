@@ -3,6 +3,7 @@ import { serve } from '@hono/node-server';
 import { createServer, getServerPort } from '@devvit/web/server';
 import { api } from './routes/api';
 import { admin } from './routes/admin';
+import { dataTransfer } from './routes/data-transfer';
 import { forms } from './routes/forms';
 import { menu } from './routes/menu';
 import { triggers } from './routes/triggers';
@@ -16,6 +17,7 @@ internal.route('/triggers', triggers);
 
 app.route('/api', api);
 app.route('/api/admin', admin);
+app.route('/api/admin/data', dataTransfer);
 app.route('/internal', internal);
 
 serve({
